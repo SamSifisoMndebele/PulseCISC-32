@@ -22,6 +22,8 @@ XOR ECX, ECX       ; ECX = 0 (ZF should be 1)
 MOV EDX, 0x0800    ; memory address pointer
 MOV [EDX], EAX     ; Store 35 at RAM[0x0800]
 MOV ESI, [EDX]     ; Load 35 into ESI
+PRINT EAX          ; Print EAX result to console
+PRINT 100          ; Print immediate to console
 HLT
 `;
 
@@ -47,6 +49,9 @@ assert(cpu.readRegister(1) === 15, 'EBX == 15 (SUB)');
 assert(cpu.readRegister(2) === 0, 'ECX == 0 (XOR ECX, ECX)');
 assert(cpu.memory.readWord(0x0800) === 35, 'Data RAM[0x0800] == 35 (MOV [EDX], EAX)');
 assert(cpu.readRegister(4) === 35, 'ESI == 35 (MOV ESI, [EDX])');
+assert(cpu.consoleOutput.length >= 3, 'Console received system reset + PRINT outputs');
+assert(cpu.consoleOutput.some(e => e.text.includes('EAX = 35')), 'Console printed EAX = 35');
+assert(cpu.consoleOutput.some(e => e.text.includes('100')), 'Console printed 100');
 
 console.log('--- Testing 16-Bit Sub-Registers (AX, BX, etc.) ---');
 const subRegProgram = `

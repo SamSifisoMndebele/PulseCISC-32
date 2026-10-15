@@ -250,6 +250,18 @@ export class Assembler {
         return this.pack(OPCODES.MOVH, destReg.id, 0, false, false, imm);
       }
 
+      case 'PRINT': {
+        if (args.length !== 1) throw new Error(`Line ${lineNum}: PRINT requires 1 operand: PRINT reg or PRINT imm`);
+        const argStr = args[0].trim();
+        try {
+          const reg = this.parseRegister(argStr, lineNum);
+          return this.pack(OPCODES.PRINT, reg.id, 0, reg.is16Bit, false, 0);
+        } catch {
+          const imm = this.parseImmediate(argStr, lineNum, labels);
+          return this.pack(OPCODES.PRINT, 0, 0, false, true, imm);
+        }
+      }
+
       case 'JMP': {
         if (args.length !== 1) throw new Error(`Line ${lineNum}: JMP requires 1 target: JMP label/address`);
         const target = this.parseImmediate(args[0], lineNum, labels);

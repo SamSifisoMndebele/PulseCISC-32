@@ -23,6 +23,7 @@ export const OPCODES = {
   JNE: 0x12,    // JNE target
   JMP: 0x13,    // JMP target
   MOVH: 0x14,   // MOVH reg, imm (Load upper 16 bits)
+  PRINT: 0x15,  // PRINT reg / imm / [mem] (Print to console)
   HLT: 0x3f,    // HLT
 } as const;
 
@@ -368,6 +369,32 @@ export function decodeInstruction(raw: number): DecodedInstruction {
         src: { type: 'IMM', imm: imm16 & 0xffff, rawString: String(imm16 & 0xffff) },
         assemblyString: asm,
       };
+
+    case OPCODES.PRINT: {
+      mnemonic = 'PRINT';
+      const isImm = srcIs16;
+      if (isImm) {
+        asm = `PRINT ${imm16}`;
+        return {
+          raw: u32,
+          mnemonic,
+          opcode,
+          dest: { type: 'IMM', imm: imm16, rawString: String(imm16) },
+          src: { type: 'NONE', rawString: '' },
+          assemblyString: asm,
+        };
+      } else {
+        asm = `PRINT ${destRegName}`;
+        return {
+          raw: u32,
+          mnemonic,
+          opcode,
+          dest: { type: 'REG', reg: destRegId, is16Bit: destIs16, rawString: destRegName },
+          src: { type: 'NONE', rawString: '' },
+          assemblyString: asm,
+        };
+      }
+    }
 
     case OPCODES.HLT:
       mnemonic = 'HLT';

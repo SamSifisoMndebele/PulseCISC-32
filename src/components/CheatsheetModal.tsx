@@ -92,6 +92,10 @@ export const CheatsheetModal: React.FC<CheatsheetModalProps> = ({ isOpen, onClos
                 <span className="text-slate-300">Conditional jumps: <code className="text-slate-200">JE loop_end</code> (jump if ZF=1), <code className="text-slate-200">JNE loop_start</code> (jump if ZF=0)</span>
               </div>
               <div className="flex items-start gap-2">
+                <span className="text-emerald-300 font-bold min-w-[70px]">PRINT</span>
+                <span className="text-slate-300">Console print: <code className="text-slate-200">PRINT EAX</code> (prints register decimal & hex), <code className="text-slate-200">PRINT 42</code> (prints immediate) to the System Console</span>
+              </div>
+              <div className="flex items-start gap-2">
                 <span className="text-emerald-300 font-bold min-w-[70px]">JMP / HLT</span>
                 <span className="text-slate-300">Unconditional jump: <code className="text-slate-200">JMP main</code>; Halt processor: <code className="text-slate-200">HLT</code></span>
               </div>

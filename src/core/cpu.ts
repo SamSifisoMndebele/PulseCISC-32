@@ -3,12 +3,13 @@ import type {
   ActiveBusId,
   CPUMicroState,
   CPUPhase,
+  ConsoleOutputEntry,
   DecodedInstruction,
   EFLAGS,
   RegisterId,
   TraceRecord,
 } from './types';
-import { decodeInstruction, toHex32, toUint32, OPCODES, REGISTER_NAMES, SUB_REGISTER_NAMES } from './isa';
+import { decodeInstruction, toHex32, toUint32, toInt32, OPCODES, REGISTER_NAMES, SUB_REGISTER_NAMES } from './isa';
 import { Memory } from './memory';
 import { ALU } from './alu';
 import type { ALUOperation } from './alu';
@@ -51,6 +52,10 @@ export class CPU {
   public traceLog: TraceRecord[] = [];
   private nextTraceId: number = 1;
 
+  // System Console Output
+  public consoleOutput: ConsoleOutputEntry[] = [];
+  private nextConsoleId: number = 1;
+
   constructor(memory?: Memory) {
     this.memory = memory ?? new Memory();
     this.reset();
@@ -82,6 +87,15 @@ export class CPU {
     this.lastModifiedMem = null;
     this.traceLog = [];
     this.nextTraceId = 1;
+    this.consoleOutput = [
+      {
+        id: this.nextConsoleId++,
+        cycle: 0,
+        type: 'system',
+        text: '[PulseCISC-32] System Reset. Ready for execution.',
+        timestamp: Date.now(),
+      },
+    ];
     this.memory.clearChangeFlags();
   }
 
@@ -392,6 +406,38 @@ export class CPU {
         this.phase = 'FETCH';
         break;
       }
+
+      case OPCODES.PRINT: {
+        let printText = '';
+        if (dest.type === 'REG' && dest.reg !== undefined) {
+          const val = this.readRegister(dest.reg, dest.is16Bit);
+          const regName = dest.is16Bit ? SUB_REGISTER_NAMES[dest.reg] : REGISTER_NAMES[dest.reg];
+          printText = `[OUT]: ${regName} = ${toInt32(val)} (${toHex32(val)})`;
+          this.activeBuses = ['REGS_TO_LATCHES', 'REG_TO_CONSOLE'];
+        } else if (dest.type === 'IMM') {
+          const val = dest.imm ?? 0;
+          printText = `[OUT]: ${val} (${toHex32(val)})`;
+          this.activeBuses = ['IMM_TO_ALU', 'REG_TO_CONSOLE'];
+        }
+
+        this.consoleOutput.push({
+          id: this.nextConsoleId++,
+          cycle: this.cycles,
+          type: 'output',
+          text: printText,
+          timestamp: Date.now(),
+        });
+
+        this.addTrace(
+          'EXECUTE',
+          `Console <- ${printText}`,
+          'Printed result to system console'
+        );
+
+        this.instructionCount++;
+        this.phase = 'FETCH';
+        break;
+      }
     }
   }
 
@@ -416,6 +462,18 @@ export class CPU {
       this.mdr = this.latchB;
       this.memory.writeWord(this.mar, this.mdr);
       this.lastModifiedMem = this.mar;
+
+      // MMIO Console Port at 0x0FF0
+      if (this.mar === 0x0ff0) {
+        this.consoleOutput.push({
+          id: this.nextConsoleId++,
+          cycle: this.cycles,
+          type: 'output',
+          text: `[MMIO 0x0FF0]: ${toInt32(this.mdr)} (${toHex32(this.mdr)})`,
+          timestamp: Date.now(),
+        });
+      }
+
       this.activeBuses = ['ALU_OUT_TO_MAR', 'LATCH_TO_MDR', 'MDR_TO_DATA_MEM'];
       this.addTrace(
         'MEMORY',
@@ -494,6 +552,7 @@ export class CPU {
       halted: this.halted,
       lastModifiedReg: this.lastModifiedReg,
       lastModifiedMem: this.lastModifiedMem,
+      consoleOutput: [...this.consoleOutput],
     };
   }
 }

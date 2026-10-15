@@ -20,7 +20,7 @@ export function App() {
   const cpu = cpuRef.current;
 
   // Preset & Editor State
-  const [selectedPresetId, setSelectedPresetId] = useState<string>('fibonacci');
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(PRESETS[0].id);
   const [code, setCode] = useState<string>(PRESETS[0].code);
   const [assembled, setAssembled] = useState<AssembledProgram>(() =>
     Assembler.assemble(PRESETS[0].code)
@@ -120,6 +120,12 @@ export function App() {
   // Clear Trace Log
   const handleClearTrace = () => {
     cpu.traceLog = [];
+    setCpuState(cpu.getSnapshot());
+  };
+
+  // Clear Console Output
+  const handleClearConsole = () => {
+    cpu.consoleOutput = [];
     setCpuState(cpu.getSnapshot());
   };
 
@@ -305,10 +311,12 @@ export function App() {
         </div>
       </div>
 
-      {/* Bottom Collapsible Micro-Operation RTL Trace Log Drawer */}
+      {/* Bottom Collapsible Micro-Operation RTL Trace & System Console Drawer */}
       <TraceLogView
         logs={cpu.traceLog}
-        onClear={handleClearTrace}
+        onClearLogs={handleClearTrace}
+        consoleOutput={cpuState.consoleOutput}
+        onClearConsole={handleClearConsole}
         isOpen={isTraceOpen}
         onToggleOpen={() => setIsTraceOpen((prev) => !prev)}
       />

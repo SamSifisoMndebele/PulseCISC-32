@@ -13,7 +13,8 @@ export type Mnemonic =
   | 'JE'
   | 'JNE'
   | 'JMP'
-  | 'HLT';
+  | 'HLT'
+  | 'PRINT';
 
 export type RegisterId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -53,7 +54,16 @@ export interface Operand {
   memBaseReg?: RegisterId;
   memOffset?: number;
   label?: string;
+  stringPayload?: string;
   rawString: string;
+}
+
+export interface ConsoleOutputEntry {
+  id: number;
+  cycle: number;
+  type: 'output' | 'info' | 'system';
+  text: string;
+  timestamp: number;
 }
 
 export interface DecodedInstruction {
@@ -85,7 +95,8 @@ export type ActiveBusId =
   | 'MDR_TO_DATA_MEM'
   | 'ALU_OUT_TO_REG_WB'
   | 'MDR_TO_REG_WB'
-  | 'IMM_TO_REG_WB';
+  | 'IMM_TO_REG_WB'
+  | 'REG_TO_CONSOLE';
 
 export interface TraceRecord {
   id: number;
@@ -117,6 +128,7 @@ export interface CPUMicroState {
   halted: boolean;
   lastModifiedReg: RegisterId | null;
   lastModifiedMem: number | null;
+  consoleOutput: ConsoleOutputEntry[];
 }
 
 export interface AssembledProgram {

@@ -1,5 +1,5 @@
 // PulseCISC-32 Datapath Canvas Renderer
-import type { CPUMicroState, ActiveBusId } from '../core/types';
+import type { CPUMicroState, ActiveBusId, CPUPhase, DecodedInstruction } from '../core/types';
 import { toHex32, toInt32, REGISTER_NAMES, SUB_REGISTER_NAMES } from '../core/isa';
 import { THEME } from './theme';
 import { ParticleSystem } from './particles';
@@ -17,15 +17,43 @@ export interface DatapathComponentInfo {
   bounds: { x: number; y: number; w: number; h: number };
 }
 
+interface ComponentBounds {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  title: string;
+}
+
+interface DisplaySnapshot {
+  eip: number;
+  ir: number;
+  mar: number;
+  codeWord: number;
+  latchA: number;
+  latchB: number;
+  aluOut: number;
+  mdr: number;
+  decoded: DecodedInstruction | null;
+  flags: { zf: boolean; sf: boolean; of: boolean };
+  registers: number[];
+}
+
 export class DatapathRenderer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private particleSystem: ParticleSystem;
 
-  // Track previous state for particle emission triggers
+  // Track previous state for sequential animation triggers
   private prevCycles: number = -1;
-  private prevPhase: string = '';
   private currentTransform = { scale: 1, offsetX: 0, offsetY: 0 };
+
+  // Sequential Animation Timing & Staging
+  private animProgress: number = 1.0; // 0.0 to 1.0
+  private lastFrameTime: number = 0;
+  private animStepPhase: CPUPhase = 'FETCH';
+  private prevDisplayed: DisplaySnapshot | null = null;
+  private targetDisplayed: DisplaySnapshot | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -39,18 +67,28 @@ export class DatapathRenderer {
     return this.particleSystem;
   }
 
+  private snapshotDisplay(state: CPUMicroState): DisplaySnapshot {
+    return {
+      eip: state.eip,
+      ir: state.ir,
+      mar: state.mar,
+      codeWord: state.codeWord ?? state.ir,
+      latchA: state.latchA,
+      latchB: state.latchB,
+      aluOut: state.aluOut,
+      mdr: state.mdr,
+      decoded: state.decoded ? { ...state.decoded } : null,
+      flags: { ...state.flags },
+      registers: Array.from(state.registers),
+    };
+  }
+
   /**
    * Main render loop called on every animation frame.
    */
   public render(state: CPUMicroState, speedScale: number = 1.0): void {
     const { width, height } = this.canvas;
     const ctx = this.ctx;
-
-    // Handle high-DPI scaling
-    const dpr = window.devicePixelRatio || 1;
-    if (this.canvas.width !== width * dpr || this.canvas.height !== height * dpr) {
-      // already managed by caller or CSS
-    }
 
     // Clear background
     ctx.fillStyle = THEME.canvasBg;
@@ -59,64 +97,43 @@ export class DatapathRenderer {
     // Draw subtle grid pattern
     this.drawGrid(ctx, width, height);
 
-    // Scale coordinates to fit canvas dimensions
+    // Scale coordinates to fit canvas dimensions (1100x680 reference design)
     const scaleX = width / 1100;
     const scaleY = height / 680;
     const scale = Math.min(scaleX, scaleY, 1.3);
 
     ctx.save();
-    // Center if aspect ratio differs
     const offsetX = (width - 1100 * scale) / 2;
     const offsetY = (height - 680 * scale) / 2;
     this.currentTransform = { scale, offsetX, offsetY };
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
 
-    // Coordinate Definitions for Datapath Blocks
-    const bEIP = { x: 50, y: 80, w: 130, h: 65, title: 'EIP (Program Counter)' };
-    const bAdder = { x: 50, y: 15, w: 100, h: 42, title: '+4 Adder' };
-    const bCodeMem = { x: 230, y: 70, w: 150, h: 85, title: 'Code Memory (0x000-0x7FF)' };
-    const bIR = { x: 420, y: 70, w: 170, h: 85, title: 'Instruction Register (IR)' };
-    const bCU = { x: 630, y: 65, w: 190, h: 95, title: 'Control Unit (FSM)' };
+    // Redesigned Datapath Layout Coordinates
+    const bAdder: ComponentBounds = { x: 50, y: 15, w: 105, h: 42, title: '+4 Adder' };
+    const bEIP: ComponentBounds = { x: 50, y: 75, w: 135, h: 70, title: 'EIP (Program Counter)' };
+    const bCodeMem: ComponentBounds = { x: 245, y: 70, w: 160, h: 85, title: 'Code Memory (ROM)' };
+    const bIR: ComponentBounds = { x: 465, y: 70, w: 185, h: 85, title: 'Instruction Register (IR)' };
 
-    const bRegs = { x: 260, y: 220, w: 210, h: 260, title: 'Register File (EAX - ESP)' };
-    const bLatchA = { x: 510, y: 240, w: 110, h: 55, title: 'Latch A (Dest)' };
-    const bLatchB = { x: 510, y: 320, w: 110, h: 55, title: 'Latch B (Src)' };
+    // Control Unit as dedicated FSM controller banner in top-right
+    const bCU: ComponentBounds = { x: 695, y: 45, w: 365, h: 115, title: 'Control Unit (FSM)' };
 
-    const bALU = { x: 670, y: 250, w: 130, h: 140, title: 'ALU' };
-    const bFlags = { x: 820, y: 240, w: 110, h: 70, title: 'EFLAGS (ZF, SF, OF)' };
-    const bALUOut = { x: 820, y: 330, w: 120, h: 55, title: 'ALU_Out Latch' };
+    // Execution & Storage Datapath components
+    const bRegs: ComponentBounds = { x: 160, y: 210, w: 220, h: 265, title: 'Register File (8 x 32-bit)' };
+    const bLatchA: ComponentBounds = { x: 430, y: 235, w: 120, h: 55, title: 'Latch A (Dest)' };
+    const bLatchB: ComponentBounds = { x: 430, y: 315, w: 120, h: 55, title: 'Latch B (Src)' };
 
-    const bMAR = { x: 970, y: 230, w: 100, h: 55, title: 'MAR (Address)' };
-    const bMDR = { x: 970, y: 310, w: 100, h: 55, title: 'MDR (Data)' };
-    const bDataRAM = { x: 950, y: 410, w: 135, h: 160, title: 'Data RAM (0x800-0xFFF)' };
+    const bALU: ComponentBounds = { x: 600, y: 245, w: 140, h: 140, title: 'ALU 32-Bit' };
+    const bFlags: ComponentBounds = { x: 790, y: 225, w: 120, h: 70, title: 'EFLAGS (ZF, SF, OF)' };
+    const bALUOut: ComponentBounds = { x: 790, y: 320, w: 120, h: 55, title: 'ALU_Out Latch' };
 
-    // Emit particles if state changed
-    if (state.cycles !== this.prevCycles || state.phase !== this.prevPhase) {
-      this.emitPhaseParticles(state, {
-        bEIP,
-        bAdder,
-        bCodeMem,
-        bIR,
-        bCU,
-        bRegs,
-        bLatchA,
-        bLatchB,
-        bALU,
-        bFlags,
-        bALUOut,
-        bMAR,
-        bMDR,
-        bDataRAM,
-      });
-      this.prevCycles = state.cycles;
-      this.prevPhase = state.phase;
-    }
+    const bMAR: ComponentBounds = { x: 960, y: 215, w: 105, h: 55, title: 'MAR (Address)' };
+    const bMDR: ComponentBounds = { x: 960, y: 295, w: 105, h: 55, title: 'MDR (Data)' };
+    const bDataRAM: ComponentBounds = { x: 940, y: 395, w: 145, h: 165, title: 'Data RAM (4 KB)' };
 
-    // 1. Draw Static & Active Bus Lines
-    this.drawBuses(ctx, state, {
-      bEIP,
+    const boxes = {
       bAdder,
+      bEIP,
       bCodeMem,
       bIR,
       bCU,
@@ -129,46 +146,223 @@ export class DatapathRenderer {
       bMAR,
       bMDR,
       bDataRAM,
-    });
+    };
 
-    // 2. Draw Datapath Components
-    this.drawEIP(ctx, bEIP, state);
-    this.drawAdder(ctx, bAdder);
-    this.drawCodeMem(ctx, bCodeMem, state);
-    this.drawIR(ctx, bIR, state);
-    this.drawControlUnit(ctx, bCU, state);
+    // Update Sequential Animation Timing on CPU Step
+    const now = performance.now();
+    if (this.lastFrameTime === 0) this.lastFrameTime = now;
+    const dt = Math.min(0.05, (now - this.lastFrameTime) / 1000);
+    this.lastFrameTime = now;
 
-    this.drawRegisterFile(ctx, bRegs, state);
+    if (state.cycles !== this.prevCycles) {
+      if (this.prevCycles === -1) {
+        // Initial setup
+        this.prevDisplayed = this.snapshotDisplay(state);
+        this.targetDisplayed = this.snapshotDisplay(state);
+        this.animProgress = 1.0;
+        this.animStepPhase = state.stepPhase || state.phase;
+      } else {
+        // Step transition triggered!
+        this.prevDisplayed = this.targetDisplayed ? { ...this.targetDisplayed } : this.snapshotDisplay(state);
+        this.targetDisplayed = this.snapshotDisplay(state);
+        this.animStepPhase = state.stepPhase || (state.phase === 'DECODE' ? 'FETCH' : state.phase === 'EXECUTE' ? 'DECODE' : state.phase);
+        this.animProgress = 0.0;
+      }
+      this.prevCycles = state.cycles;
+    }
+
+    // Advance animation progress smoothly
+    if (this.animProgress < 1.0) {
+      const animDuration = Math.max(0.25, 0.95 / speedScale);
+      this.animProgress = Math.min(1.0, this.animProgress + dt / animDuration);
+    }
+
+    const P = this.animProgress;
+    const from = this.prevDisplayed || this.snapshotDisplay(state);
+    const to = this.targetDisplayed || this.snapshotDisplay(state);
+    const stepPhase = this.animStepPhase;
+
+    // Active CU phase determining overall state highlights
+    // If we are currently transitioning through a step (P < 1.0), the active operations belong to stepPhase!
+    // Otherwise, when idle/waiting for next step, the CU state is state.phase.
+    const activeCUPhase: CPUPhase = (P < 1.0 && stepPhase) ? stepPhase : state.phase;
+
+    // Calculate sequential pulses ("stress to ROM", latch activations, etc.)
+    let pulseROM = 0;
+    let pulseIR = 0;
+    let pulseAdder = 0;
+    let pulseRegs = 0;
+    let pulseLatches = 0;
+    let pulseALU = 0;
+    let pulseALUOut = 0;
+    let pulseRAM = 0;
+    let pulseMDR = 0;
+
+    if (P < 1.0) {
+      if (stepPhase === 'FETCH') {
+        if (P >= 0.12 && P <= 0.44) pulseAdder = Math.sin(((P - 0.12) / 0.32) * Math.PI);
+        if (P >= 0.38 && P <= 0.55) pulseROM = Math.sin(((P - 0.38) / 0.17) * Math.PI); // Stress to ROM!
+        if (P >= 0.88 && P <= 1.0) pulseIR = Math.sin(((P - 0.88) / 0.12) * Math.PI); // Latch into IR!
+      } else if (stepPhase === 'DECODE') {
+        if (P >= 0.35 && P <= 0.55) pulseRegs = Math.sin(((P - 0.35) / 0.2) * Math.PI);
+        if (P >= 0.88 && P <= 1.0) pulseLatches = Math.sin(((P - 0.88) / 0.12) * Math.PI);
+      } else if (stepPhase === 'EXECUTE') {
+        if (P >= 0.38 && P <= 0.6) pulseALU = Math.sin(((P - 0.38) / 0.22) * Math.PI);
+        if (P >= 0.88 && P <= 1.0) pulseALUOut = Math.sin(((P - 0.88) / 0.12) * Math.PI);
+      } else if (stepPhase === 'MEMORY') {
+        if (P >= 0.4 && P <= 0.65) pulseRAM = Math.sin(((P - 0.4) / 0.25) * Math.PI);
+        if (P >= 0.88 && P <= 1.0) pulseMDR = Math.sin(((P - 0.88) / 0.12) * Math.PI);
+      } else if (stepPhase === 'WRITEBACK') {
+        if (P >= 0.75 && P <= 1.0) pulseRegs = Math.sin(((P - 0.75) / 0.25) * Math.PI);
+      }
+    }
+
+    // Determine currently displayed values based on sequential progress
+    let dispEIP = to.eip;
+    let dispMar = to.mar;
+    let dispCodeWord = to.codeWord;
+    let dispIR = to.ir;
+    let dispDecoded = to.decoded;
+    let dispLatchA = to.latchA;
+    let dispLatchB = to.latchB;
+    let dispAluOut = to.aluOut;
+    let dispMdr = to.mdr;
+
+    if (P < 1.0) {
+      if (stepPhase === 'FETCH') {
+        dispEIP = P < 0.42 ? (state.oldEip ?? from.eip) : to.eip;
+        dispMar = P < 0.38 ? from.mar : to.mar;
+        dispCodeWord = P < 0.38 ? from.codeWord : to.ir;
+        dispIR = P < 0.9 ? from.ir : to.ir;
+        dispDecoded = P < 0.9 ? from.decoded : to.decoded;
+      } else if (stepPhase === 'DECODE') {
+        dispLatchA = P < 0.9 ? from.latchA : to.latchA;
+        dispLatchB = P < 0.9 ? from.latchB : to.latchB;
+      } else if (stepPhase === 'EXECUTE') {
+        dispAluOut = P < 0.9 ? from.aluOut : to.aluOut;
+      } else if (stepPhase === 'MEMORY') {
+        dispMdr = P < 0.9 ? from.mdr : to.mdr;
+      }
+    }
+
+    // --- COMPONENT HIGHLIGHTING FOR CURRENT CU STATE ---
+    // All parts involved in the active CU phase are brightly illuminated in that phase's color!
+    const fetchCol = THEME.phases.FETCH.primary;
+    const decodeCol = THEME.phases.DECODE.primary;
+    const execCol = THEME.phases.EXECUTE.primary;
+    const memCol = THEME.phases.MEMORY.primary;
+    const wbCol = THEME.phases.WRITEBACK.primary;
+
+    const isEIPActive = activeCUPhase === 'FETCH' || state.activeBuses.includes('BRANCH_TARGET_TO_EIP') || state.activeBuses.includes('JUMP_TARGET_TO_EIP');
+    const eipColor = activeCUPhase === 'FETCH' ? fetchCol : execCol;
+
+    const isAdderActive = activeCUPhase === 'FETCH';
+    const adderColor = fetchCol;
+
+    const isCodeMemActive = activeCUPhase === 'FETCH';
+    const codeMemColor = fetchCol;
+
+    const isIRActive = activeCUPhase === 'FETCH' || activeCUPhase === 'DECODE';
+    const irColor = activeCUPhase === 'FETCH' ? fetchCol : decodeCol;
+
+    const isRegsActive = activeCUPhase === 'DECODE' || activeCUPhase === 'WRITEBACK';
+    const regsColor = activeCUPhase === 'WRITEBACK' ? wbCol : decodeCol;
+
+    const isLatchAActive = activeCUPhase === 'DECODE' || activeCUPhase === 'EXECUTE';
+    const latchAColor = activeCUPhase === 'EXECUTE' ? execCol : decodeCol;
+
+    const isLatchBActive = activeCUPhase === 'DECODE' || activeCUPhase === 'EXECUTE' || (activeCUPhase === 'MEMORY' && state.activeBuses.includes('LATCH_TO_MDR'));
+    const latchBColor = state.latchBIsImmediate ? '#f59e0b' : (activeCUPhase === 'EXECUTE' ? execCol : decodeCol);
+
+    const isALUActive = activeCUPhase === 'EXECUTE';
+    const aluColor = execCol;
+
+    const isFlagsActive = activeCUPhase === 'EXECUTE';
+    const flagsColor = execCol;
+
+    const isALUOutActive = activeCUPhase === 'EXECUTE' || activeCUPhase === 'MEMORY' || (activeCUPhase === 'WRITEBACK' && state.activeBuses.includes('ALU_OUT_TO_REG_WB'));
+    const aluOutColor = activeCUPhase === 'EXECUTE' ? execCol : (activeCUPhase === 'MEMORY' ? memCol : wbCol);
+
+    const isMARActive = activeCUPhase === 'MEMORY' || state.activeBuses.includes('ALU_OUT_TO_MAR');
+    const marColor = memCol;
+
+    const isMDRActive = activeCUPhase === 'MEMORY' || (activeCUPhase === 'WRITEBACK' && state.activeBuses.includes('MDR_TO_REG_WB'));
+    const mdrColor = activeCUPhase === 'MEMORY' ? memCol : wbCol;
+
+    const isDataRAMActive = activeCUPhase === 'MEMORY';
+    const dataRAMColor = memCol;
+
+    // 1. Draw Static & Active Bus Lines
+    this.drawBuses(ctx, state, boxes, P, activeCUPhase);
+
+    // 2. Draw Datapath Components with full CU state lighting
+    this.drawEIP(ctx, bEIP, dispEIP, isEIPActive, eipColor);
+    this.drawAdder(ctx, bAdder, isAdderActive, adderColor, pulseAdder);
+    this.drawCodeMem(ctx, bCodeMem, dispMar, dispCodeWord, isCodeMemActive, codeMemColor, pulseROM);
+    this.drawIR(ctx, bIR, dispIR, dispDecoded, isIRActive, irColor, pulseIR);
+    this.drawControlUnit(ctx, bCU, state, activeCUPhase);
+
+    this.drawRegisterFile(ctx, bRegs, state, isRegsActive, regsColor, pulseRegs);
     this.drawLatch(
       ctx,
       bLatchA,
       'Latch A',
-      state.latchA,
-      state.activeBuses.includes('REGS_TO_LATCHES'),
+      dispLatchA,
+      isLatchAActive,
+      latchAColor,
       state.latchASource,
-      false
+      false,
+      pulseLatches
     );
     this.drawLatch(
       ctx,
       bLatchB,
       'Latch B',
-      state.latchB,
-      state.activeBuses.includes('REGS_TO_LATCHES') || Boolean(state.latchBIsImmediate),
+      dispLatchB,
+      isLatchBActive,
+      latchBColor,
       state.latchBSource,
-      Boolean(state.latchBIsImmediate)
+      Boolean(state.latchBIsImmediate),
+      pulseLatches
     );
 
-    this.drawALU(ctx, bALU, state);
-    this.drawFlags(ctx, bFlags, state.flags);
-    this.drawLatch(ctx, bALUOut, 'ALU_Out', state.aluOut, state.activeBuses.includes('ALU_TO_ALU_OUT'));
+    this.drawALU(ctx, bALU, state, isALUActive, aluColor, pulseALU);
+    this.drawFlags(ctx, bFlags, to.flags, isFlagsActive, flagsColor);
+    this.drawLatch(
+      ctx,
+      bALUOut,
+      'ALU_Out',
+      dispAluOut,
+      isALUOutActive,
+      aluOutColor,
+      undefined,
+      false,
+      pulseALUOut
+    );
 
-    this.drawLatch(ctx, bMAR, 'MAR', state.mar, state.activeBuses.includes('ALU_OUT_TO_MAR') || state.activeBuses.includes('EIP_TO_MAR'));
-    this.drawLatch(ctx, bMDR, 'MDR', state.mdr, state.activeBuses.includes('MEM_TO_MDR') || state.activeBuses.includes('LATCH_TO_MDR'));
-    this.drawDataRAM(ctx, bDataRAM, state);
+    this.drawLatch(
+      ctx,
+      bMAR,
+      'MAR',
+      to.mar,
+      isMARActive,
+      marColor
+    );
+    this.drawLatch(
+      ctx,
+      bMDR,
+      'MDR',
+      dispMdr,
+      isMDRActive,
+      mdrColor,
+      undefined,
+      false,
+      pulseMDR
+    );
+    this.drawDataRAM(ctx, bDataRAM, state, isDataRAMActive, dataRAMColor, pulseRAM);
 
-    // 3. Update & Render Particles
-    this.particleSystem.update(speedScale);
-    this.particleSystem.render(ctx);
+    // 3. Render Continuous Bus Flow & Sequential Staged Particles
+    this.renderDatapathParticles(ctx, boxes, state, P, activeCUPhase, from, to, speedScale);
 
     ctx.restore();
   }
@@ -192,13 +386,15 @@ export class DatapathRenderer {
   private drawBuses(
     ctx: CanvasRenderingContext2D,
     state: CPUMicroState,
-    b: Record<string, { x: number; y: number; w: number; h: number }>
+    b: Record<string, ComponentBounds>,
+    P: number,
+    activeCUPhase: CPUPhase
   ): void {
     const isAct = (id: ActiveBusId) => state.activeBuses.includes(id);
-    const phaseColor = THEME.phases[state.phase]?.primary || THEME.textAccent;
 
-    // Helper to draw bus line
-    const drawLine = (points: Point2D[], active: boolean) => {
+    // Helper to draw bus line with optional glow and arrowhead
+    const drawLine = (points: Point2D[], active: boolean, activeColor: string = THEME.textAccent) => {
+      if (points.length < 2) return;
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
@@ -207,9 +403,9 @@ export class DatapathRenderer {
       }
 
       if (active) {
-        ctx.strokeStyle = phaseColor;
+        ctx.strokeStyle = activeColor;
         ctx.lineWidth = THEME.activeBusWidth;
-        ctx.shadowColor = phaseColor;
+        ctx.shadowColor = activeColor;
         ctx.shadowBlur = 12;
       } else {
         ctx.strokeStyle = THEME.busDefault;
@@ -217,232 +413,542 @@ export class DatapathRenderer {
       }
       ctx.stroke();
 
-      // Draw directional arrow on last segment
-      if (points.length >= 2) {
-        const p1 = points[points.length - 2];
-        const p2 = points[points.length - 1];
-        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-        ctx.fillStyle = active ? phaseColor : THEME.busDefault;
-        ctx.beginPath();
-        ctx.moveTo(p2.x, p2.y);
-        ctx.lineTo(p2.x - 7 * Math.cos(angle - Math.PI / 6), p2.y - 7 * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(p2.x - 7 * Math.cos(angle + Math.PI / 6), p2.y - 7 * Math.sin(angle + Math.PI / 6));
-        ctx.closePath();
-        ctx.fill();
-      }
+      // Directional arrow on last segment
+      const p1 = points[points.length - 2];
+      const p2 = points[points.length - 1];
+      const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      ctx.fillStyle = active ? activeColor : THEME.busDefault;
+      ctx.beginPath();
+      ctx.moveTo(p2.x, p2.y);
+      ctx.lineTo(p2.x - 7 * Math.cos(angle - Math.PI / 6), p2.y - 7 * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(p2.x - 7 * Math.cos(angle + Math.PI / 6), p2.y - 7 * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fill();
 
       ctx.restore();
     };
 
-    // EIP -> Code Memory
-    drawLine([
-      { x: b.bEIP.x + b.bEIP.w, y: b.bEIP.y + 30 },
-      { x: b.bCodeMem.x, y: b.bCodeMem.y + 30 },
-    ], isAct('EIP_TO_MAR'));
+    const fetchColor = THEME.phases.FETCH.primary;
+    const decodeColor = THEME.phases.DECODE.primary;
+    const execColor = THEME.phases.EXECUTE.primary;
+    const memColor = THEME.phases.MEMORY.primary;
+    const wbColor = THEME.phases.WRITEBACK.primary;
 
-    // EIP -> Adder (+4) loop
-    drawLine([
-      { x: b.bEIP.x + 30, y: b.bEIP.y },
-      { x: b.bAdder.x + 30, y: b.bAdder.y + b.bAdder.h },
-    ], isAct('EIP_INCREMENT'));
-    drawLine([
-      { x: b.bAdder.x + 70, y: b.bAdder.y + b.bAdder.h },
-      { x: b.bEIP.x + 70, y: b.bEIP.y },
-    ], isAct('EIP_INCREMENT'));
+    // 1. EIP -> Code Memory (ROM) Address Bus
+    const isFetchAddrActive = activeCUPhase === 'FETCH' && (P <= 0.48 || P >= 1.0 || isAct('EIP_TO_MAR'));
+    drawLine(
+      [
+        { x: b.bEIP.x + b.bEIP.w, y: b.bEIP.y + 35 },
+        { x: b.bCodeMem.x, y: b.bCodeMem.y + 35 },
+      ],
+      isFetchAddrActive,
+      fetchColor
+    );
 
-    // Code Memory -> IR
-    drawLine([
-      { x: b.bCodeMem.x + b.bCodeMem.w, y: b.bCodeMem.y + 40 },
-      { x: b.bIR.x, y: b.bIR.y + 40 },
-    ], isAct('CODE_MEM_TO_IR'));
+    // 2. EIP <-> +4 Adder Loop
+    const isAdderActive = activeCUPhase === 'FETCH';
+    drawLine(
+      [
+        { x: b.bEIP.x + 35, y: b.bEIP.y },
+        { x: b.bAdder.x + 35, y: b.bAdder.y + b.bAdder.h },
+      ],
+      isAdderActive,
+      fetchColor
+    );
+    drawLine(
+      [
+        { x: b.bAdder.x + 75, y: b.bAdder.y + b.bAdder.h },
+        { x: b.bEIP.x + 75, y: b.bEIP.y },
+      ],
+      isAdderActive,
+      fetchColor
+    );
 
-    // IR -> CU
-    drawLine([
-      { x: b.bIR.x + b.bIR.w, y: b.bIR.y + 40 },
-      { x: b.bCU.x, y: b.bCU.y + 40 },
-    ], isAct('IR_TO_CU'));
+    // 3. Code Memory (ROM) -> IR Instruction Word Data Bus
+    const isFetchDataActive = activeCUPhase === 'FETCH' && (P >= 0.45 || P >= 1.0 || isAct('CODE_MEM_TO_IR'));
+    drawLine(
+      [
+        { x: b.bCodeMem.x + b.bCodeMem.w, y: b.bCodeMem.y + 35 },
+        { x: b.bIR.x, y: b.bIR.y + 35 },
+      ],
+      isFetchDataActive,
+      fetchColor
+    );
 
-    // IR -> Reg File (Read address lines)
-    drawLine([
-      { x: b.bIR.x + 50, y: b.bIR.y + b.bIR.h },
-      { x: b.bIR.x + 50, y: 190 },
-      { x: b.bRegs.x + 60, y: 190 },
-      { x: b.bRegs.x + 60, y: b.bRegs.y },
-    ], isAct('IR_TO_REG_READ'));
+    // 4. IR -> Register File (Register address lines for Decode)
+    const isRegReadActive = activeCUPhase === 'DECODE';
+    drawLine(
+      [
+        { x: b.bIR.x + 45, y: b.bIR.y + b.bIR.h },
+        { x: b.bIR.x + 45, y: 185 },
+        { x: b.bRegs.x + 110, y: 185 },
+        { x: b.bRegs.x + 110, y: b.bRegs.y },
+      ],
+      isRegReadActive,
+      decodeColor
+    );
 
-    // Reg File -> Latches A & B
-    drawLine([
-      { x: b.bRegs.x + b.bRegs.w, y: b.bLatchA.y + 25 },
-      { x: b.bLatchA.x, y: b.bLatchA.y + 25 },
-    ], isAct('REGS_TO_LATCHES'));
+    // 5. IR -> Latch B (Immediate constant line)
+    const isImmActive = Boolean(state.latchBIsImmediate) && (activeCUPhase === 'DECODE' || isAct('IMM_TO_ALU'));
+    drawLine(
+      [
+        { x: b.bIR.x + 130, y: b.bIR.y + b.bIR.h },
+        { x: b.bIR.x + 130, y: b.bLatchB.y + 27 },
+        { x: b.bLatchB.x, y: b.bLatchB.y + 27 },
+      ],
+      isImmActive,
+      '#f59e0b'
+    );
 
-    drawLine([
-      { x: b.bRegs.x + b.bRegs.w, y: b.bLatchB.y + 25 },
-      { x: b.bLatchB.x, y: b.bLatchB.y + 25 },
-    ], isAct('REGS_TO_LATCHES'));
+    // 6. Register File -> Latches A & B
+    const isRegToLatchActive = activeCUPhase === 'DECODE';
+    drawLine(
+      [
+        { x: b.bRegs.x + b.bRegs.w, y: b.bLatchA.y + 27 },
+        { x: b.bLatchA.x, y: b.bLatchA.y + 27 },
+      ],
+      isRegToLatchActive,
+      decodeColor
+    );
+    drawLine(
+      [
+        { x: b.bRegs.x + b.bRegs.w, y: b.bLatchB.y + 27 },
+        { x: b.bLatchB.x, y: b.bLatchB.y + 27 },
+      ],
+      isRegToLatchActive && !state.latchBIsImmediate,
+      decodeColor
+    );
 
-    // Latches -> ALU
-    drawLine([
-      { x: b.bLatchA.x + b.bLatchA.w, y: b.bLatchA.y + 25 },
-      { x: b.bALU.x, y: b.bALU.y + 35 },
-    ], isAct('LATCHES_TO_ALU'));
-
-    drawLine([
-      { x: b.bLatchB.x + b.bLatchB.w, y: b.bLatchB.y + 25 },
-      { x: b.bALU.x, y: b.bALU.y + 105 },
-    ], isAct('LATCHES_TO_ALU') || isAct('IMM_TO_ALU'));
-
-    // ALU -> ALU_Out
-    drawLine([
-      { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 70 },
-      { x: b.bALUOut.x, y: b.bALUOut.y + 25 },
-    ], isAct('ALU_TO_ALU_OUT'));
-
-    // ALU -> Flags
-    drawLine([
-      { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 30 },
-      { x: b.bFlags.x, y: b.bFlags.y + 35 },
-    ], isAct('ALU_TO_FLAGS'));
-
-    // ALU_Out -> MAR (Data RAM)
-    drawLine([
-      { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 25 },
-      { x: b.bMAR.x - 20, y: b.bALUOut.y + 25 },
-      { x: b.bMAR.x - 20, y: b.bMAR.y + 25 },
-      { x: b.bMAR.x, y: b.bMAR.y + 25 },
-    ], isAct('ALU_OUT_TO_MAR'));
-
-    // MAR -> Data RAM
-    drawLine([
-      { x: b.bMAR.x + b.bMAR.w / 2, y: b.bMAR.y + b.bMAR.h },
-      { x: b.bMAR.x + b.bMAR.w / 2, y: b.bDataRAM.y },
-    ], isAct('ALU_OUT_TO_MAR'));
-
-    // Latch B -> MDR
-    drawLine([
-      { x: b.bLatchB.x + b.bLatchB.w / 2, y: b.bLatchB.y + b.bLatchB.h },
-      { x: b.bLatchB.x + b.bLatchB.w / 2, y: 440 },
-      { x: 930, y: 440 },
-      { x: 930, y: b.bMDR.y + 25 },
-      { x: b.bMDR.x, y: b.bMDR.y + 25 },
-    ], isAct('LATCH_TO_MDR'));
-
-    // MDR <-> Data RAM
-    drawLine([
-      { x: b.bMDR.x + 30, y: b.bMDR.y + b.bMDR.h },
-      { x: b.bMDR.x + 30, y: b.bDataRAM.y },
-    ], isAct('MEM_TO_MDR') || isAct('MDR_TO_DATA_MEM'));
-
-    // Writeback Bus (ALU_Out / MDR back to Register File)
-    drawLine([
-      { x: b.bALUOut.x + 40, y: b.bALUOut.y + b.bALUOut.h },
-      { x: b.bALUOut.x + 40, y: 550 },
-      { x: b.bRegs.x + b.bRegs.w / 2, y: 550 },
-      { x: b.bRegs.x + b.bRegs.w / 2, y: b.bRegs.y + b.bRegs.h },
-    ], isAct('ALU_OUT_TO_REG_WB'));
-
-    drawLine([
-      { x: b.bMDR.x + 70, y: b.bMDR.y + b.bMDR.h },
-      { x: b.bMDR.x + 70, y: 570 },
-      { x: b.bRegs.x + b.bRegs.w / 2 - 20, y: 570 },
-      { x: b.bRegs.x + b.bRegs.w / 2 - 20, y: b.bRegs.y + b.bRegs.h },
-    ], isAct('MDR_TO_REG_WB'));
-
-    // Branch Target feedback to EIP
-    drawLine([
-      { x: b.bALU.x + 40, y: b.bALU.y },
-      { x: b.bALU.x + 40, y: 175 },
-      { x: 100, y: 175 },
-      { x: 100, y: b.bEIP.y + b.bEIP.h },
-    ], isAct('BRANCH_TARGET_TO_EIP') || isAct('JUMP_TARGET_TO_EIP'));
-  }
-
-  private emitPhaseParticles(
-    state: CPUMicroState,
-    b: Record<string, { x: number; y: number; w: number; h: number }>
-  ): void {
-    const isAct = (id: ActiveBusId) => state.activeBuses.includes(id);
-    const phaseInfo = THEME.phases[state.phase];
-    if (!phaseInfo) return;
-
-    const col = phaseInfo.primary;
-    const glow = phaseInfo.glow;
-
-    if (isAct('EIP_TO_MAR')) {
-      this.particleSystem.emit([
-        { x: b.bEIP.x + b.bEIP.w, y: b.bEIP.y + 30 },
-        { x: b.bCodeMem.x, y: b.bCodeMem.y + 30 },
-      ], col, glow, 4, toHex32(state.eip));
-    }
-
-    if (isAct('CODE_MEM_TO_IR')) {
-      this.particleSystem.emit([
-        { x: b.bCodeMem.x + b.bCodeMem.w, y: b.bCodeMem.y + 40 },
-        { x: b.bIR.x, y: b.bIR.y + 40 },
-      ], col, glow, 4, toHex32(state.ir));
-    }
-
-    if (isAct('REGS_TO_LATCHES')) {
-      this.particleSystem.emit([
-        { x: b.bRegs.x + b.bRegs.w, y: b.bLatchA.y + 25 },
-        { x: b.bLatchA.x, y: b.bLatchA.y + 25 },
-      ], col, glow, 3, toHex32(state.latchA));
-      this.particleSystem.emit([
-        { x: b.bRegs.x + b.bRegs.w, y: b.bLatchB.y + 25 },
-        { x: b.bLatchB.x, y: b.bLatchB.y + 25 },
-      ], col, glow, 3, toHex32(state.latchB));
-    }
-
-    if (isAct('LATCHES_TO_ALU')) {
-      this.particleSystem.emit([
-        { x: b.bLatchA.x + b.bLatchA.w, y: b.bLatchA.y + 25 },
+    // 7. Latches -> ALU Inputs
+    const isLatchToALUActive = activeCUPhase === 'EXECUTE';
+    drawLine(
+      [
+        { x: b.bLatchA.x + b.bLatchA.w, y: b.bLatchA.y + 27 },
         { x: b.bALU.x, y: b.bALU.y + 35 },
-      ], col, glow, 3);
-      this.particleSystem.emit([
-        { x: b.bLatchB.x + b.bLatchB.w, y: b.bLatchB.y + 25 },
+      ],
+      isLatchToALUActive,
+      execColor
+    );
+    drawLine(
+      [
+        { x: b.bLatchB.x + b.bLatchB.w, y: b.bLatchB.y + 27 },
         { x: b.bALU.x, y: b.bALU.y + 105 },
-      ], col, glow, 3);
-    }
+      ],
+      isLatchToALUActive || isAct('IMM_TO_ALU'),
+      execColor
+    );
 
-    if (isAct('ALU_TO_ALU_OUT')) {
-      this.particleSystem.emit([
+    // 8. ALU -> ALU_Out
+    const isALUToOutActive = activeCUPhase === 'EXECUTE';
+    drawLine(
+      [
         { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 70 },
-        { x: b.bALUOut.x, y: b.bALUOut.y + 25 },
-      ], col, glow, 4, toHex32(state.aluOut));
-    }
+        { x: b.bALUOut.x, y: b.bALUOut.y + 27 },
+      ],
+      isALUToOutActive,
+      execColor
+    );
 
-    if (isAct('ALU_OUT_TO_MAR')) {
-      this.particleSystem.emit([
-        { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 25 },
-        { x: b.bMAR.x - 20, y: b.bALUOut.y + 25 },
-        { x: b.bMAR.x - 20, y: b.bMAR.y + 25 },
-        { x: b.bMAR.x, y: b.bMAR.y + 25 },
-      ], col, glow, 4, toHex32(state.mar));
-    }
+    // 9. ALU -> Flags
+    const isALUToFlagsActive = activeCUPhase === 'EXECUTE';
+    drawLine(
+      [
+        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 30 },
+        { x: b.bFlags.x, y: b.bFlags.y + 35 },
+      ],
+      isALUToFlagsActive,
+      execColor
+    );
 
-    if (isAct('MEM_TO_MDR')) {
-      this.particleSystem.emit([
-        { x: b.bDataRAM.x + 30, y: b.bDataRAM.y },
-        { x: b.bMDR.x + 30, y: b.bMDR.y + b.bMDR.h },
-      ], col, glow, 4, toHex32(state.mdr));
-    }
+    // 10. ALU_Out -> MAR (Data RAM address)
+    const isALUToMARActive = activeCUPhase === 'MEMORY' || isAct('ALU_OUT_TO_MAR');
+    drawLine(
+      [
+        { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 27 },
+        { x: b.bMAR.x - 20, y: b.bALUOut.y + 27 },
+        { x: b.bMAR.x - 20, y: b.bMAR.y + 27 },
+        { x: b.bMAR.x, y: b.bMAR.y + 27 },
+      ],
+      isALUToMARActive,
+      memColor
+    );
 
-    if (isAct('ALU_OUT_TO_REG_WB')) {
-      this.particleSystem.emit([
+    // 11. MAR -> Data RAM
+    drawLine(
+      [
+        { x: b.bMAR.x + b.bMAR.w / 2, y: b.bMAR.y + b.bMAR.h },
+        { x: b.bMAR.x + b.bMAR.w / 2, y: b.bDataRAM.y },
+      ],
+      isALUToMARActive,
+      memColor
+    );
+
+    // 12. Latch B -> MDR (Memory Store data)
+    const isLatchToMDRActive = isAct('LATCH_TO_MDR') || (activeCUPhase === 'MEMORY' && Boolean(state.decoded && state.decoded.opcode === 0x11));
+    drawLine(
+      [
+        { x: b.bLatchB.x + b.bLatchB.w / 2, y: b.bLatchB.y + b.bLatchB.h },
+        { x: b.bLatchB.x + b.bLatchB.w / 2, y: 440 },
+        { x: b.bMDR.x - 15, y: 440 },
+        { x: b.bMDR.x - 15, y: b.bMDR.y + 27 },
+        { x: b.bMDR.x, y: b.bMDR.y + 27 },
+      ],
+      isLatchToMDRActive,
+      memColor
+    );
+
+    // 13. MDR <-> Data RAM
+    const isRAMDataActive = activeCUPhase === 'MEMORY' || isAct('MEM_TO_MDR') || isAct('MDR_TO_DATA_MEM');
+    drawLine(
+      [
+        { x: b.bMDR.x + 35, y: b.bMDR.y + b.bMDR.h },
+        { x: b.bMDR.x + 35, y: b.bDataRAM.y },
+      ],
+      isRAMDataActive,
+      memColor
+    );
+
+    // 14. Writeback Bus (ALU_Out / MDR back to Register File)
+    const isWBActive = activeCUPhase === 'WRITEBACK' || isAct('ALU_OUT_TO_REG_WB') || isAct('MDR_TO_REG_WB');
+    drawLine(
+      [
         { x: b.bALUOut.x + 40, y: b.bALUOut.y + b.bALUOut.h },
         { x: b.bALUOut.x + 40, y: 550 },
         { x: b.bRegs.x + b.bRegs.w / 2, y: 550 },
         { x: b.bRegs.x + b.bRegs.w / 2, y: b.bRegs.y + b.bRegs.h },
-      ], col, glow, 5, toHex32(state.aluOut));
+      ],
+      isWBActive && !isAct('MDR_TO_REG_WB'),
+      wbColor
+    );
+
+    drawLine(
+      [
+        { x: b.bMDR.x + 70, y: b.bMDR.y + b.bMDR.h },
+        { x: b.bMDR.x + 70, y: 575 },
+        { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: 575 },
+        { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: b.bRegs.y + b.bRegs.h },
+      ],
+      isWBActive && isAct('MDR_TO_REG_WB'),
+      wbColor
+    );
+
+    // 15. Branch/Jump Target feedback to EIP
+    const isBranchActive = isAct('BRANCH_TARGET_TO_EIP') || isAct('JUMP_TARGET_TO_EIP');
+    drawLine(
+      [
+        { x: b.bALU.x + 40, y: b.bALU.y },
+        { x: b.bALU.x + 40, y: 175 },
+        { x: b.bEIP.x + 60, y: 175 },
+        { x: b.bEIP.x + 60, y: b.bEIP.y + b.bEIP.h },
+      ],
+      isBranchActive,
+      execColor
+    );
+  }
+
+  /**
+   * Renders continuous flowing particles on all active buses AND sequential staged packets during transitions.
+   */
+  private renderDatapathParticles(
+    ctx: CanvasRenderingContext2D,
+    b: Record<string, ComponentBounds>,
+    state: CPUMicroState,
+    P: number,
+    activeCUPhase: CPUPhase,
+    from: DisplaySnapshot,
+    to: DisplaySnapshot,
+    speedScale: number
+  ): void {
+    const fetchCol = THEME.phases.FETCH.primary;
+    const fetchGlow = THEME.phases.FETCH.glow;
+    const decodeCol = THEME.phases.DECODE.primary;
+    const decodeGlow = THEME.phases.DECODE.glow;
+    const execCol = THEME.phases.EXECUTE.primary;
+    const execGlow = THEME.phases.EXECUTE.glow;
+    const memCol = THEME.phases.MEMORY.primary;
+    const memGlow = THEME.phases.MEMORY.glow;
+    const wbCol = THEME.phases.WRITEBACK.primary;
+    const wbGlow = THEME.phases.WRITEBACK.glow;
+
+    // A. SEQUENTIAL STAGED PACKETS DURING STEP TRANSITION (P < 1.0)
+    if (P < 1.0) {
+      if (activeCUPhase === 'FETCH') {
+        // Stage 1: Address Packet EIP -> Code Memory (ROM)
+        const pAddr = P / 0.42;
+        if (pAddr >= 0 && pAddr <= 1) {
+          const pathEIPToROM: Point2D[] = [
+            { x: b.bEIP.x + b.bEIP.w, y: b.bEIP.y + 35 },
+            { x: b.bCodeMem.x, y: b.bCodeMem.y + 35 },
+          ];
+          const fetchAddrHex = toHex32(state.oldEip ?? from.eip);
+          ParticleSystem.renderPacket(ctx, pathEIPToROM, pAddr, fetchCol, fetchGlow, fetchAddrHex, 4);
+        }
+
+        // Parallel/Staggered: EIP loop through +4 Dedicated Adder
+        const pAdder = (P - 0.1) / 0.34;
+        if (pAdder >= 0 && pAdder <= 1) {
+          const pathAdder: Point2D[] = [
+            { x: b.bEIP.x + 35, y: b.bEIP.y },
+            { x: b.bAdder.x + 35, y: b.bAdder.y + b.bAdder.h },
+            { x: b.bAdder.x + 75, y: b.bAdder.y + b.bAdder.h },
+            { x: b.bEIP.x + 75, y: b.bEIP.y },
+          ];
+          const newEipHex = toHex32(to.eip);
+          ParticleSystem.renderPacket(ctx, pathAdder, pAdder, fetchCol, fetchGlow, newEipHex, 3);
+        }
+
+        // Stage 3: Instruction Word Packet Code Memory (ROM) -> IR
+        // Starts after address arrives and ROM is read (P = 0.48 to 0.90)
+        const pWord = (P - 0.48) / 0.42;
+        if (pWord >= 0 && pWord <= 1) {
+          const pathROMToIR: Point2D[] = [
+            { x: b.bCodeMem.x + b.bCodeMem.w, y: b.bCodeMem.y + 35 },
+            { x: b.bIR.x, y: b.bIR.y + 35 },
+          ];
+          const wordHex = toHex32(to.ir);
+          ParticleSystem.renderPacket(ctx, pathROMToIR, pWord, fetchCol, fetchGlow, wordHex, 4);
+        }
+      } else if (activeCUPhase === 'DECODE') {
+        const pIRToRegs = P / 0.45;
+        if (pIRToRegs >= 0 && pIRToRegs <= 1) {
+          const pathIRToRegs: Point2D[] = [
+            { x: b.bIR.x + 45, y: b.bIR.y + b.bIR.h },
+            { x: b.bIR.x + 45, y: 185 },
+            { x: b.bRegs.x + 110, y: 185 },
+            { x: b.bRegs.x + 110, y: b.bRegs.y },
+          ];
+          ParticleSystem.renderPacket(ctx, pathIRToRegs, pIRToRegs, decodeCol, decodeGlow, 'REG_ADDR', 3);
+        }
+
+        const pRegToLatch = (P - 0.48) / 0.42;
+        if (pRegToLatch >= 0 && pRegToLatch <= 1) {
+          const pathA: Point2D[] = [
+            { x: b.bRegs.x + b.bRegs.w, y: b.bLatchA.y + 27 },
+            { x: b.bLatchA.x, y: b.bLatchA.y + 27 },
+          ];
+          ParticleSystem.renderPacket(ctx, pathA, pRegToLatch, decodeCol, decodeGlow, toHex32(to.latchA), 3);
+
+          if (state.latchBIsImmediate) {
+            const pathImm: Point2D[] = [
+              { x: b.bIR.x + 130, y: b.bIR.y + b.bIR.h },
+              { x: b.bIR.x + 130, y: b.bLatchB.y + 27 },
+              { x: b.bLatchB.x, y: b.bLatchB.y + 27 },
+            ];
+            ParticleSystem.renderPacket(ctx, pathImm, pRegToLatch, '#f59e0b', '#fbbf24', toHex32(to.latchB), 3);
+          } else {
+            const pathB: Point2D[] = [
+              { x: b.bRegs.x + b.bRegs.w, y: b.bLatchB.y + 27 },
+              { x: b.bLatchB.x, y: b.bLatchB.y + 27 },
+            ];
+            ParticleSystem.renderPacket(ctx, pathB, pRegToLatch, decodeCol, decodeGlow, toHex32(to.latchB), 3);
+          }
+        }
+      } else if (activeCUPhase === 'EXECUTE') {
+        const pIn = P / 0.45;
+        if (pIn >= 0 && pIn <= 1) {
+          const pathA: Point2D[] = [
+            { x: b.bLatchA.x + b.bLatchA.w, y: b.bLatchA.y + 27 },
+            { x: b.bALU.x, y: b.bALU.y + 35 },
+          ];
+          const pathB: Point2D[] = [
+            { x: b.bLatchB.x + b.bLatchB.w, y: b.bLatchB.y + 27 },
+            { x: b.bALU.x, y: b.bALU.y + 105 },
+          ];
+          ParticleSystem.renderPacket(ctx, pathA, pIn, execCol, execGlow, undefined, 3);
+          ParticleSystem.renderPacket(ctx, pathB, pIn, execCol, execGlow, undefined, 3);
+        }
+
+        const pOut = (P - 0.5) / 0.42;
+        if (pOut >= 0 && pOut <= 1) {
+          const pathOut: Point2D[] = [
+            { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 70 },
+            { x: b.bALUOut.x, y: b.bALUOut.y + 27 },
+          ];
+          ParticleSystem.renderPacket(ctx, pathOut, pOut, execCol, execGlow, toHex32(to.aluOut), 4);
+
+          const pathFlags: Point2D[] = [
+            { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 30 },
+            { x: b.bFlags.x, y: b.bFlags.y + 35 },
+          ];
+          ParticleSystem.renderPacket(ctx, pathFlags, pOut, execCol, execGlow, undefined, 2);
+
+          if (state.activeBuses.includes('BRANCH_TARGET_TO_EIP') || state.activeBuses.includes('JUMP_TARGET_TO_EIP')) {
+            const pathBranch: Point2D[] = [
+              { x: b.bALU.x + 40, y: b.bALU.y },
+              { x: b.bALU.x + 40, y: 175 },
+              { x: b.bEIP.x + 60, y: 175 },
+              { x: b.bEIP.x + 60, y: b.bEIP.y + b.bEIP.h },
+            ];
+            ParticleSystem.renderPacket(ctx, pathBranch, pOut, execCol, execGlow, toHex32(to.eip), 4);
+          }
+        }
+      } else if (activeCUPhase === 'MEMORY') {
+        const pMem = P / 0.48;
+        if (pMem >= 0 && pMem <= 1) {
+          const pathMAR: Point2D[] = [
+            { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 27 },
+            { x: b.bMAR.x - 20, y: b.bALUOut.y + 27 },
+            { x: b.bMAR.x - 20, y: b.bMAR.y + 27 },
+            { x: b.bMAR.x, y: b.bMAR.y + 27 },
+          ];
+          ParticleSystem.renderPacket(ctx, pathMAR, pMem, memCol, memGlow, toHex32(to.mar), 3);
+        }
+
+        if (state.activeBuses.includes('MEM_TO_MDR')) {
+          const pMDR = (P - 0.5) / 0.42;
+          if (pMDR >= 0 && pMDR <= 1) {
+            const pathRead: Point2D[] = [
+              { x: b.bDataRAM.x + 35, y: b.bDataRAM.y },
+              { x: b.bMDR.x + 35, y: b.bMDR.y + b.bMDR.h },
+            ];
+            ParticleSystem.renderPacket(ctx, pathRead, pMDR, memCol, memGlow, toHex32(to.mdr), 4);
+          }
+        }
+      } else if (activeCUPhase === 'WRITEBACK') {
+        const pWB = P / 0.8;
+        if (pWB >= 0 && pWB <= 1) {
+          if (!state.activeBuses.includes('MDR_TO_REG_WB')) {
+            const pathWB: Point2D[] = [
+              { x: b.bALUOut.x + 40, y: b.bALUOut.y + b.bALUOut.h },
+              { x: b.bALUOut.x + 40, y: 550 },
+              { x: b.bRegs.x + b.bRegs.w / 2, y: 550 },
+              { x: b.bRegs.x + b.bRegs.w / 2, y: b.bRegs.y + b.bRegs.h },
+            ];
+            ParticleSystem.renderPacket(ctx, pathWB, pWB, wbCol, wbGlow, toHex32(to.aluOut), 5);
+          } else {
+            const pathWB: Point2D[] = [
+              { x: b.bMDR.x + 70, y: b.bMDR.y + b.bMDR.h },
+              { x: b.bMDR.x + 70, y: 575 },
+              { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: 575 },
+              { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: b.bRegs.y + b.bRegs.h },
+            ];
+            ParticleSystem.renderPacket(ctx, pathWB, pWB, wbCol, wbGlow, toHex32(to.mdr), 5);
+          }
+        }
+      }
     }
 
-    if (isAct('MDR_TO_REG_WB')) {
-      this.particleSystem.emit([
-        { x: b.bMDR.x + 70, y: b.bMDR.y + b.bMDR.h },
-        { x: b.bMDR.x + 70, y: 570 },
-        { x: b.bRegs.x + b.bRegs.w / 2 - 20, y: 570 },
-        { x: b.bRegs.x + b.bRegs.w / 2 - 20, y: b.bRegs.y + b.bRegs.h },
-      ], col, glow, 5, toHex32(state.mdr));
+    // B. CONTINUOUS FLOWING PARTICLES ON ACTIVE BUSES
+    // Ensures the datapath ALWAYS shows glowing, flowing data movement while in any CU state!
+    const timeSec = (performance.now() / 1000) * Math.max(0.7, speedScale);
+
+    const renderFlow = (path: Point2D[], col: string, glow: string, count: number = 2) => {
+      for (let i = 0; i < count; i++) {
+        const progress = (timeSec * 0.75 + (i / count)) % 1.0;
+        ParticleSystem.renderPacket(ctx, path, progress, col, glow, undefined, 2);
+      }
+    };
+
+    if (activeCUPhase === 'FETCH') {
+      const pathEIPToROM: Point2D[] = [
+        { x: b.bEIP.x + b.bEIP.w, y: b.bEIP.y + 35 },
+        { x: b.bCodeMem.x, y: b.bCodeMem.y + 35 },
+      ];
+      renderFlow(pathEIPToROM, fetchCol, fetchGlow, 2);
+
+      const pathAdder: Point2D[] = [
+        { x: b.bEIP.x + 35, y: b.bEIP.y },
+        { x: b.bAdder.x + 35, y: b.bAdder.y + b.bAdder.h },
+        { x: b.bAdder.x + 75, y: b.bAdder.y + b.bAdder.h },
+        { x: b.bEIP.x + 75, y: b.bEIP.y },
+      ];
+      renderFlow(pathAdder, fetchCol, fetchGlow, 2);
+
+      const pathROMToIR: Point2D[] = [
+        { x: b.bCodeMem.x + b.bCodeMem.w, y: b.bCodeMem.y + 35 },
+        { x: b.bIR.x, y: b.bIR.y + 35 },
+      ];
+      renderFlow(pathROMToIR, fetchCol, fetchGlow, 2);
+    } else if (activeCUPhase === 'DECODE') {
+      const pathIRToRegs: Point2D[] = [
+        { x: b.bIR.x + 45, y: b.bIR.y + b.bIR.h },
+        { x: b.bIR.x + 45, y: 185 },
+        { x: b.bRegs.x + 110, y: 185 },
+        { x: b.bRegs.x + 110, y: b.bRegs.y },
+      ];
+      renderFlow(pathIRToRegs, decodeCol, decodeGlow, 2);
+
+      const pathA: Point2D[] = [
+        { x: b.bRegs.x + b.bRegs.w, y: b.bLatchA.y + 27 },
+        { x: b.bLatchA.x, y: b.bLatchA.y + 27 },
+      ];
+      renderFlow(pathA, decodeCol, decodeGlow, 2);
+
+      if (state.latchBIsImmediate) {
+        const pathImm: Point2D[] = [
+          { x: b.bIR.x + 130, y: b.bIR.y + b.bIR.h },
+          { x: b.bIR.x + 130, y: b.bLatchB.y + 27 },
+          { x: b.bLatchB.x, y: b.bLatchB.y + 27 },
+        ];
+        renderFlow(pathImm, '#f59e0b', '#fbbf24', 2);
+      } else {
+        const pathB: Point2D[] = [
+          { x: b.bRegs.x + b.bRegs.w, y: b.bLatchB.y + 27 },
+          { x: b.bLatchB.x, y: b.bLatchB.y + 27 },
+        ];
+        renderFlow(pathB, decodeCol, decodeGlow, 2);
+      }
+    } else if (activeCUPhase === 'EXECUTE') {
+      const pathA: Point2D[] = [
+        { x: b.bLatchA.x + b.bLatchA.w, y: b.bLatchA.y + 27 },
+        { x: b.bALU.x, y: b.bALU.y + 35 },
+      ];
+      const pathB: Point2D[] = [
+        { x: b.bLatchB.x + b.bLatchB.w, y: b.bLatchB.y + 27 },
+        { x: b.bALU.x, y: b.bALU.y + 105 },
+      ];
+      renderFlow(pathA, execCol, execGlow, 2);
+      renderFlow(pathB, execCol, execGlow, 2);
+
+      const pathOut: Point2D[] = [
+        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 70 },
+        { x: b.bALUOut.x, y: b.bALUOut.y + 27 },
+      ];
+      renderFlow(pathOut, execCol, execGlow, 2);
+
+      const pathFlags: Point2D[] = [
+        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 30 },
+        { x: b.bFlags.x, y: b.bFlags.y + 35 },
+      ];
+      renderFlow(pathFlags, execCol, execGlow, 1);
+    } else if (activeCUPhase === 'MEMORY') {
+      const pathMAR: Point2D[] = [
+        { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 27 },
+        { x: b.bMAR.x - 20, y: b.bALUOut.y + 27 },
+        { x: b.bMAR.x - 20, y: b.bMAR.y + 27 },
+        { x: b.bMAR.x, y: b.bMAR.y + 27 },
+      ];
+      renderFlow(pathMAR, memCol, memGlow, 2);
+
+      const pathRAM: Point2D[] = [
+        { x: b.bMAR.x + b.bMAR.w / 2, y: b.bMAR.y + b.bMAR.h },
+        { x: b.bMAR.x + b.bMAR.w / 2, y: b.bDataRAM.y },
+      ];
+      renderFlow(pathRAM, memCol, memGlow, 2);
+
+      const pathMDR: Point2D[] = [
+        { x: b.bMDR.x + 35, y: b.bMDR.y + b.bMDR.h },
+        { x: b.bMDR.x + 35, y: b.bDataRAM.y },
+      ];
+      renderFlow(pathMDR, memCol, memGlow, 2);
+    } else if (activeCUPhase === 'WRITEBACK') {
+      if (!state.activeBuses.includes('MDR_TO_REG_WB')) {
+        const pathWB: Point2D[] = [
+          { x: b.bALUOut.x + 40, y: b.bALUOut.y + b.bALUOut.h },
+          { x: b.bALUOut.x + 40, y: 550 },
+          { x: b.bRegs.x + b.bRegs.w / 2, y: 550 },
+          { x: b.bRegs.x + b.bRegs.w / 2, y: b.bRegs.y + b.bRegs.h },
+        ];
+        renderFlow(pathWB, wbCol, wbGlow, 3);
+      } else {
+        const pathWB: Point2D[] = [
+          { x: b.bMDR.x + 70, y: b.bMDR.y + b.bMDR.h },
+          { x: b.bMDR.x + 70, y: 575 },
+          { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: 575 },
+          { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: b.bRegs.y + b.bRegs.h },
+        ];
+        renderFlow(pathWB, wbCol, wbGlow, 3);
+      }
     }
   }
 
@@ -453,16 +959,21 @@ export class DatapathRenderer {
     box: { x: number; y: number; w: number; h: number },
     title: string,
     active: boolean = false,
-    activeColor: string = THEME.textAccent
+    activeColor: string = THEME.textAccent,
+    pulse: number = 0
   ): void {
     ctx.save();
-    ctx.fillStyle = THEME.cardBg;
-    ctx.strokeStyle = active ? activeColor : THEME.cardBorder;
-    ctx.lineWidth = active ? 2 : 1;
-
-    if (active) {
+    if (active || pulse > 0) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.strokeStyle = activeColor;
+      ctx.lineWidth = pulse > 0 ? 2.5 : 2;
       ctx.shadowColor = activeColor;
-      ctx.shadowBlur = 14;
+      ctx.shadowBlur = pulse > 0 ? 18 + pulse * 12 : 14;
+    } else {
+      ctx.fillStyle = THEME.cardBg;
+      ctx.strokeStyle = THEME.cardBorder;
+      ctx.lineWidth = 1;
+      ctx.shadowBlur = 0;
     }
 
     ctx.beginPath();
@@ -472,7 +983,7 @@ export class DatapathRenderer {
 
     // Title bar
     ctx.shadowBlur = 0;
-    ctx.fillStyle = active ? activeColor : THEME.textSecondary;
+    ctx.fillStyle = active || pulse > 0 ? activeColor : THEME.textSecondary;
     ctx.font = '11px "Inter", system-ui, sans-serif';
     ctx.fillText(title, box.x + 8, box.y + 16);
     ctx.restore();
@@ -480,110 +991,159 @@ export class DatapathRenderer {
 
   private drawEIP(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number },
-    state: CPUMicroState
+    box: ComponentBounds,
+    val: number,
+    active: boolean,
+    activeColor: string
   ): void {
-    const isFetch = state.phase === 'FETCH';
-    this.drawCard(ctx, box, 'EIP (Program Counter)', isFetch, THEME.phases.FETCH.primary);
+    this.drawCard(ctx, box, 'EIP (Program Counter)', active, activeColor);
 
     ctx.fillStyle = THEME.textPrimary;
     ctx.font = '14px "JetBrains Mono", monospace';
-    ctx.fillText(toHex32(state.eip), box.x + 10, box.y + 42);
+    ctx.fillText(toHex32(val), box.x + 10, box.y + 42);
 
     ctx.fillStyle = THEME.textMuted;
     ctx.font = '10px monospace';
-    ctx.fillText(`Dec: ${state.eip}`, box.x + 10, box.y + 57);
+    ctx.fillText(`Dec: ${toInt32(val)}`, box.x + 10, box.y + 58);
   }
 
   private drawAdder(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number }
+    box: ComponentBounds,
+    active: boolean,
+    activeColor: string,
+    pulse: number
   ): void {
-    this.drawCard(ctx, box, '+4 Adder', false);
-    ctx.fillStyle = THEME.textSecondary;
+    this.drawCard(ctx, box, '+4 Dedicated Adder', active || pulse > 0, activeColor, pulse);
+    ctx.fillStyle = active || pulse > 0 ? activeColor : THEME.textSecondary;
     ctx.font = '12px "JetBrains Mono", monospace';
-    ctx.fillText('EIP + 4', box.x + 15, box.y + 32);
+    ctx.fillText('EIP + 4', box.x + 18, box.y + 32);
   }
 
   private drawCodeMem(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number },
-    state: CPUMicroState
+    box: ComponentBounds,
+    addr: number,
+    word: number,
+    active: boolean,
+    activeColor: string,
+    pulse: number
   ): void {
-    const isFetch = state.phase === 'FETCH';
-    this.drawCard(ctx, box, 'Code Memory (ROM)', isFetch, THEME.phases.FETCH.primary);
+    this.drawCard(ctx, box, 'Code Memory (ROM)', active || pulse > 0, activeColor, pulse);
 
-    ctx.fillStyle = THEME.textMuted;
-    ctx.font = '10px "Inter", sans-serif';
-    ctx.fillText('Addr: ' + toHex32(state.mar), box.x + 10, box.y + 38);
+    ctx.fillStyle = active || pulse > 0 ? '#6ee7b7' : THEME.textMuted;
+    ctx.font = '10.5px "JetBrains Mono", monospace';
+    ctx.fillText('Addr: ' + toHex32(addr), box.x + 10, box.y + 38);
 
-    ctx.fillStyle = THEME.textAccent;
-    ctx.font = '12px "JetBrains Mono", monospace';
-    ctx.fillText('Word: ' + toHex32(state.ir), box.x + 10, box.y + 60);
+    ctx.fillStyle = active || pulse > 0 ? '#a7f3d0' : THEME.textAccent;
+    ctx.font = 'bold 12px "JetBrains Mono", monospace';
+    ctx.fillText('Word: ' + toHex32(word), box.x + 10, box.y + 62);
   }
 
   private drawIR(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number },
-    state: CPUMicroState
+    box: ComponentBounds,
+    val: number,
+    decoded: DecodedInstruction | null,
+    active: boolean,
+    activeColor: string,
+    pulse: number
   ): void {
-    const isDecode = state.phase === 'DECODE';
-    this.drawCard(ctx, box, 'Instruction Register (IR)', isDecode, THEME.phases.DECODE.primary);
+    this.drawCard(ctx, box, 'Instruction Register (IR)', active || pulse > 0, activeColor, pulse);
 
     ctx.fillStyle = THEME.textPrimary;
     ctx.font = '13px "JetBrains Mono", monospace';
-    ctx.fillText(toHex32(state.ir), box.x + 10, box.y + 40);
+    ctx.fillText(toHex32(val), box.x + 10, box.y + 40);
 
-    ctx.fillStyle = isDecode ? THEME.phases.DECODE.primary : THEME.textAccent;
-    ctx.font = '12px "JetBrains Mono", monospace';
-    ctx.fillText(state.decoded ? state.decoded.assemblyString : 'NOP / IDLE', box.x + 10, box.y + 64);
+    ctx.fillStyle = active ? activeColor : (decoded ? THEME.phases.DECODE.primary : THEME.textMuted);
+    ctx.font = 'bold 11.5px "JetBrains Mono", monospace';
+    ctx.fillText(decoded ? decoded.assemblyString : 'NOP / IDLE', box.x + 10, box.y + 64);
   }
 
+  /**
+   * Draws the Control Unit as an overarching FSM controller panel without misleading datapath arrows.
+   */
   private drawControlUnit(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number },
-    state: CPUMicroState
+    box: ComponentBounds,
+    state: CPUMicroState,
+    activeCUPhase: CPUPhase
   ): void {
-    const phaseInfo = THEME.phases[state.phase] || THEME.phases.FETCH;
-    this.drawCard(ctx, box, 'Control Unit (FSM)', true, phaseInfo.primary);
+    const phaseInfo = THEME.phases[activeCUPhase] || THEME.phases.FETCH;
+
+    this.drawCard(ctx, box, 'Control Unit (FSM Controller)', true, phaseInfo.primary);
 
     // Phase Pill
+    ctx.save();
     ctx.fillStyle = phaseInfo.primary;
     ctx.beginPath();
-    ctx.roundRect(box.x + 10, box.y + 26, 85, 22, 11);
+    ctx.roundRect(box.x + 10, box.y + 26, 95, 24, 12);
     ctx.fill();
 
     ctx.fillStyle = '#0a0d14';
-    ctx.font = 'bold 11px "Inter", sans-serif';
-    ctx.fillText(phaseInfo.name.toUpperCase(), box.x + 18, box.y + 41);
+    ctx.font = 'bold 11.5px "Inter", sans-serif';
+    ctx.fillText(phaseInfo.name.toUpperCase(), box.x + 20, box.y + 42);
 
-    // Active Microcode signals
+    // Active Cycle & Insts statistics
     ctx.fillStyle = THEME.textSecondary;
-    ctx.font = '10px "JetBrains Mono", monospace';
-    ctx.fillText(`Cycle: ${state.cycles}`, box.x + 105, box.y + 35);
-    ctx.fillText(`Insts: ${state.instructionCount}`, box.x + 105, box.y + 48);
+    ctx.font = '10.5px "JetBrains Mono", monospace';
+    ctx.fillText(`Cycle: ${state.cycles}`, box.x + 115, box.y + 35);
+    ctx.fillText(`Insts: ${state.instructionCount}`, box.x + 115, box.y + 48);
 
-    ctx.fillStyle = THEME.textMuted;
-    ctx.font = '9px monospace';
-    ctx.fillText(phaseInfo.description.substring(0, 32) + '...', box.x + 10, box.y + 75);
+    // Microcode RTL description
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '9.5px "JetBrains Mono", monospace';
+    ctx.fillText(phaseInfo.description.substring(0, 48) + '...', box.x + 10, box.y + 72);
+
+    // Hardware Microcode Control Signals Bar
+    const signals = [
+      { name: 'PC_Inc', active: activeCUPhase === 'FETCH' },
+      { name: 'MemRead', active: activeCUPhase === 'FETCH' || (activeCUPhase === 'MEMORY' && state.activeBuses.includes('MEM_TO_MDR')) },
+      { name: 'IR_Latch', active: activeCUPhase === 'FETCH' },
+      { name: 'RegRead', active: activeCUPhase === 'DECODE' },
+      { name: 'ALU_Op', active: activeCUPhase === 'EXECUTE' },
+      { name: 'RegWrite', active: activeCUPhase === 'WRITEBACK' },
+    ];
+
+    const sigW = 54;
+    const sigH = 18;
+    signals.forEach((sig, idx) => {
+      const sx = box.x + 10 + idx * (sigW + 4);
+      const sy = box.y + 85;
+
+      ctx.fillStyle = sig.active ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.04)';
+      ctx.strokeStyle = sig.active ? phaseInfo.primary : '#1e293b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(sx, sy, sigW, sigH, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = sig.active ? phaseInfo.primary : '#64748b';
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      ctx.fillText(sig.name, sx + 5, sy + 12);
+    });
+
+    ctx.restore();
   }
 
   private drawRegisterFile(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number },
-    state: CPUMicroState
+    box: ComponentBounds,
+    state: CPUMicroState,
+    active: boolean,
+    activeColor: string,
+    pulse: number
   ): void {
-    const isWB = state.phase === 'WRITEBACK';
-    const isDecode = state.phase === 'DECODE';
     this.drawCard(
       ctx,
       box,
       'Register File (8 x 32-bit)',
-      isWB || isDecode,
-      isWB ? THEME.phases.WRITEBACK.primary : THEME.phases.DECODE.primary
+      active || pulse > 0,
+      activeColor,
+      pulse
     );
 
-    // Draw 8 registers in compact rows
     const rowH = 25;
     for (let i = 0; i < 8; i++) {
       const regId = i as keyof typeof REGISTER_NAMES;
@@ -623,17 +1183,18 @@ export class DatapathRenderer {
 
   private drawLatch(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number },
+    box: ComponentBounds,
     label: string,
     val: number,
     active: boolean,
+    activeColor: string,
     sourceTag?: string,
-    isImmediate?: boolean
+    isImmediate?: boolean,
+    pulse: number = 0
   ): void {
-    const activeColor = isImmediate ? '#f59e0b' : THEME.textAccent;
-    this.drawCard(ctx, box, label, active, activeColor);
+    const cardColor = isImmediate ? '#f59e0b' : activeColor;
+    this.drawCard(ctx, box, label, active || pulse > 0, cardColor, pulse);
 
-    // Source Tag Badge in upper right of card
     if (sourceTag && sourceTag !== 'NONE') {
       ctx.save();
       const badgeText = isImmediate
@@ -661,12 +1222,10 @@ export class DatapathRenderer {
       ctx.restore();
     }
 
-    // Hex Value
-    ctx.fillStyle = active ? (isImmediate ? '#fef08a' : THEME.textAccent) : THEME.textPrimary;
+    ctx.fillStyle = active ? (isImmediate ? '#fef08a' : activeColor) : THEME.textPrimary;
     ctx.font = '11.5px "JetBrains Mono", monospace';
     ctx.fillText(toHex32(val), box.x + 8, box.y + 35);
 
-    // Decimal Value
     ctx.fillStyle = THEME.textMuted;
     ctx.font = '9.5px "JetBrains Mono", monospace';
     ctx.fillText(`Dec: ${toInt32(val)}`, box.x + 8, box.y + 48);
@@ -674,10 +1233,13 @@ export class DatapathRenderer {
 
   private drawALU(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number },
-    state: CPUMicroState
+    box: ComponentBounds,
+    state: CPUMicroState,
+    active: boolean,
+    activeColor: string,
+    pulse: number = 0
   ): void {
-    const isExec = state.phase === 'EXECUTE';
+    const isExec = active || pulse > 0;
     ctx.save();
 
     // Classic ALU Trapezoid Polygon
@@ -691,21 +1253,20 @@ export class DatapathRenderer {
     ctx.lineTo(box.x, box.y + 40);
     ctx.closePath();
 
-    ctx.fillStyle = THEME.cardBg;
-    ctx.strokeStyle = isExec ? THEME.phases.EXECUTE.primary : THEME.cardBorder;
-    ctx.lineWidth = isExec ? 2.5 : 1;
+    ctx.fillStyle = pulse > 0 ? 'rgba(239, 68, 68, 0.15)' : THEME.cardBg;
+    ctx.strokeStyle = isExec ? activeColor : THEME.cardBorder;
+    ctx.lineWidth = pulse > 0 ? 3 : isExec ? 2.5 : 1;
 
     if (isExec) {
-      ctx.shadowColor = THEME.phases.EXECUTE.glow;
-      ctx.shadowBlur = 16;
+      ctx.shadowColor = activeColor;
+      ctx.shadowBlur = pulse > 0 ? 22 : 16;
     }
 
     ctx.fill();
     ctx.stroke();
 
-    // Label and active operator icon
     ctx.shadowBlur = 0;
-    ctx.fillStyle = isExec ? THEME.phases.EXECUTE.primary : THEME.textSecondary;
+    ctx.fillStyle = isExec ? activeColor : THEME.textSecondary;
     ctx.font = 'bold 12px "Inter", sans-serif';
     ctx.fillText('ALU 32-Bit', box.x + 35, box.y + 30);
 
@@ -727,21 +1288,23 @@ export class DatapathRenderer {
 
   private drawFlags(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number },
-    flags: { zf: boolean; sf: boolean; of: boolean }
+    box: ComponentBounds,
+    flags: { zf: boolean; sf: boolean; of: boolean },
+    active: boolean,
+    activeColor: string
   ): void {
-    this.drawCard(ctx, box, 'EFLAGS', false);
+    this.drawCard(ctx, box, 'EFLAGS', active, activeColor);
 
-    const drawFlagPill = (x: number, y: number, name: string, active: boolean) => {
-      ctx.fillStyle = active ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.05)';
-      ctx.strokeStyle = active ? '#10b981' : THEME.cardBorder;
+    const drawFlagPill = (x: number, y: number, name: string, isActive: boolean) => {
+      ctx.fillStyle = isActive ? 'rgba(16, 185, 129, 0.3)' : 'rgba(255, 255, 255, 0.05)';
+      ctx.strokeStyle = isActive ? '#10b981' : THEME.cardBorder;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.roundRect(x, y, 26, 18, 3);
       ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = active ? '#10b981' : THEME.textMuted;
+      ctx.fillStyle = isActive ? '#10b981' : THEME.textMuted;
       ctx.font = 'bold 10px monospace';
       ctx.fillText(name, x + 5, y + 13);
     };
@@ -753,25 +1316,27 @@ export class DatapathRenderer {
 
   private drawDataRAM(
     ctx: CanvasRenderingContext2D,
-    box: { x: number; y: number; w: number; h: number },
-    state: CPUMicroState
+    box: ComponentBounds,
+    state: CPUMicroState,
+    active: boolean,
+    activeColor: string,
+    pulse: number = 0
   ): void {
-    const isMem = state.phase === 'MEMORY';
-    this.drawCard(ctx, box, 'Data RAM (4 KB)', isMem, THEME.phases.MEMORY.primary);
+    const isMem = active || pulse > 0;
+    this.drawCard(ctx, box, 'Data RAM (4 KB)', isMem, activeColor, pulse);
 
-    // Show top 4 words of Data Segment (0x0800 - 0x080C)
     for (let i = 0; i < 4; i++) {
       const addr = 0x0800 + i * 4;
-      const val = state.mar === addr && isMem ? state.mdr : 0; // live view
+      const val = state.mar === addr && isMem ? state.mdr : 0;
       const y = box.y + 30 + i * 30;
 
       const isTarget = state.mar === addr && isMem;
       if (isTarget) {
-        ctx.fillStyle = 'rgba(168, 85, 247, 0.2)';
+        ctx.fillStyle = 'rgba(168, 85, 247, 0.25)';
         ctx.fillRect(box.x + 4, y - 2, box.w - 8, 26);
       }
 
-      ctx.fillStyle = isTarget ? THEME.phases.MEMORY.primary : THEME.textMuted;
+      ctx.fillStyle = isTarget ? activeColor : THEME.textMuted;
       ctx.font = '10px monospace';
       ctx.fillText(`0x${addr.toString(16).toUpperCase()}:`, box.x + 8, y + 16);
 
@@ -793,20 +1358,20 @@ export class DatapathRenderer {
     const unscaledY = (screenY - offsetY) / scale;
 
     const boxes: Record<string, { x: number; y: number; w: number; h: number }> = {
-      EIP: { x: 50, y: 80, w: 130, h: 65 },
-      ADDER: { x: 50, y: 15, w: 100, h: 42 },
-      CODE_MEM: { x: 230, y: 70, w: 150, h: 85 },
-      IR: { x: 420, y: 70, w: 170, h: 85 },
-      CU: { x: 630, y: 65, w: 190, h: 95 },
-      REGS: { x: 260, y: 220, w: 210, h: 260 },
-      LATCH_A: { x: 510, y: 240, w: 110, h: 55 },
-      LATCH_B: { x: 510, y: 320, w: 110, h: 55 },
-      ALU: { x: 670, y: 250, w: 130, h: 140 },
-      FLAGS: { x: 820, y: 240, w: 110, h: 70 },
-      ALU_OUT: { x: 820, y: 330, w: 120, h: 55 },
-      MAR: { x: 970, y: 230, w: 100, h: 55 },
-      MDR: { x: 970, y: 310, w: 100, h: 55 },
-      DATA_RAM: { x: 950, y: 410, w: 135, h: 160 },
+      EIP: { x: 50, y: 75, w: 135, h: 70 },
+      ADDER: { x: 50, y: 15, w: 105, h: 42 },
+      CODE_MEM: { x: 245, y: 70, w: 160, h: 85 },
+      IR: { x: 465, y: 70, w: 185, h: 85 },
+      CU: { x: 695, y: 45, w: 365, h: 115 },
+      REGS: { x: 160, y: 210, w: 220, h: 265 },
+      LATCH_A: { x: 430, y: 235, w: 120, h: 55 },
+      LATCH_B: { x: 430, y: 315, w: 120, h: 55 },
+      ALU: { x: 600, y: 245, w: 140, h: 140 },
+      FLAGS: { x: 790, y: 225, w: 120, h: 70 },
+      ALU_OUT: { x: 790, y: 320, w: 120, h: 55 },
+      MAR: { x: 960, y: 215, w: 105, h: 55 },
+      MDR: { x: 960, y: 295, w: 105, h: 55 },
+      DATA_RAM: { x: 940, y: 395, w: 145, h: 165 },
     };
 
     for (const [id, box] of Object.entries(boxes)) {
@@ -832,7 +1397,7 @@ export class DatapathRenderer {
           role: 'Points to memory address of the next instruction',
           summary: 'Stores the 32-bit address where the CPU fetches instructions from Code Memory.',
           pedagogicalInsight: 'Notice that EIP advances by +4 during Fetch before Execution finishes!',
-          whyExplanation: '1. Independent Hardware: The dedicated +4 Adder runs in parallel with memory reading (0 clock penalty).\n2. Default Assumption: Code is sequential 95% of the time, so priming the next instruction saves cycles.\n3. Safe for Jumps: If this instruction is a branch or jump (JE/JNE/JMP), the Execute phase simply overwrites EIP with the target address.\n4. Instruction Word Saved: The current instruction is safely frozen inside the Instruction Register (IR), so advancing EIP will never lose your place!',
+          whyExplanation: '1. Sequential Fetch: Address is sent to Code Memory first, then EIP is incremented by +4 via dedicated hardware.\n2. Non-blocking: Advancing EIP prepares the next instruction without stalling memory reading.\n3. Safe for Jumps: If this instruction is a branch or jump (JE/JNE/JMP), the Execute phase overwrites EIP with the target address.\n4. Instruction Safely Latched: The current instruction word is frozen inside the Instruction Register (IR).',
           mnemonic: '"Read the current page, slide the bookmark to the next."',
           bounds,
         };
@@ -853,11 +1418,11 @@ export class DatapathRenderer {
       case 'CODE_MEM':
         return {
           id: 'CODE_MEM',
-          title: 'Code Memory (0x000 - 0x7FF)',
+          title: 'Code Memory (ROM)',
           category: 'MEMORY',
-          role: 'Stores the program machine code instructions',
-          summary: 'Addressed by MAR during Fetch to output a 32-bit instruction word into IR.',
-          pedagogicalInsight: 'Separate Code & Data memory prevents code from accidentally overwriting itself (Harvard architecture model).',
+          role: 'Stores program machine code instructions',
+          summary: 'Addressed by EIP during Fetch to output a 32-bit instruction word into IR.',
+          pedagogicalInsight: 'During Fetch, the address arrives from EIP, Code Memory is accessed ("stressed" to read the word), and the fetched word is then transmitted to the Instruction Register.',
           bounds,
         };
 
@@ -867,18 +1432,19 @@ export class DatapathRenderer {
           title: 'Instruction Register (IR)',
           category: 'REGISTER',
           role: 'Holds the active 32-bit instruction word',
-          summary: 'Latches the instruction bits so the Control Unit and datapath can process them over multiple clock cycles.',
-          pedagogicalInsight: 'Because IR freezes the instruction, EIP can safely increment without losing current execution state.',
+          summary: 'Latches the instruction word after it arrives from Code Memory so the rest of the CPU can decode and execute it.',
+          pedagogicalInsight: 'IR freezes the instruction bits so EIP can safely increment to the next instruction.',
           bounds,
         };
 
       case 'CU':
         return {
           id: 'CU',
-          title: 'Control Unit (Finite State Machine)',
+          title: 'Control Unit (FSM Controller)',
           category: 'CONTROL',
-          role: 'Brain of the processor; drives all multiplexers and enable signals',
-          summary: 'Inspects opcode bits and cycles through FETCH -> DECODE -> EXECUTE -> MEMORY -> WRITEBACK.',
+          role: 'Brain of the processor; orchestrates all datapath operations and control signals',
+          summary: 'Inspects opcode bits and coordinates the micro-operation sequence (FETCH -> DECODE -> EXECUTE -> MEMORY -> WRITEBACK) via dedicated enable signals.',
+          pedagogicalInsight: 'The Control Unit oversees the processor through enable lines rather than carrying data payloads in the datapath.',
           bounds,
         };
 

@@ -123,6 +123,7 @@ export interface TraceRecord {
 
 export interface CPUMicroState {
   eip: number;
+  oldEip?: number;
   ir: number;
   mar: number;
   mdr: number;
@@ -135,6 +136,8 @@ export interface CPUMicroState {
   registers: Uint32Array; // 8 registers: EAX(0) to ESP(7)
   flags: EFLAGS;
   phase: CPUPhase;
+  stepPhase?: CPUPhase;
+  codeWord?: number;
   decoded: DecodedInstruction | null;
   activeBuses: ActiveBusId[];
   cycles: number;

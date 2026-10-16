@@ -119,10 +119,10 @@ export class ParticleSystem {
     ctx.restore();
   }
 
-  private interpolatePath(points: Point2D[], progress: number): Point2D | null {
-    if (points.length < 2) return null;
+  public static interpolate(points: Point2D[], progress: number): Point2D | null {
+    if (points.length < 2) return points[0] || null;
+    const clamped = Math.max(0, Math.min(1, progress));
 
-    // Calculate segment lengths
     let totalLength = 0;
     const lengths: number[] = [];
     for (let i = 0; i < points.length - 1; i++) {
@@ -135,13 +135,13 @@ export class ParticleSystem {
 
     if (totalLength === 0) return points[0];
 
-    const targetDist = progress * totalLength;
+    const targetDist = clamped * totalLength;
     let accumulated = 0;
 
     for (let i = 0; i < lengths.length; i++) {
       const segLen = lengths[i];
       if (accumulated + segLen >= targetDist) {
-        const segProgress = (targetDist - accumulated) / segLen;
+        const segProgress = segLen > 0 ? (targetDist - accumulated) / segLen : 0;
         const p0 = points[i];
         const p1 = points[i + 1];
         return {
@@ -153,5 +153,80 @@ export class ParticleSystem {
     }
 
     return points[points.length - 1];
+  }
+
+  /**
+   * Renders a synchronized packet of particles along a bus path at an exact progress [0, 1].
+   */
+  public static renderPacket(
+    ctx: CanvasRenderingContext2D,
+    path: Point2D[],
+    progress: number,
+    color: string,
+    glowColor: string,
+    payloadText?: string,
+    particleCount: number = 3
+  ): void {
+    if (progress < 0 || progress > 1 || path.length < 2) return;
+
+    ctx.save();
+
+    // Draw trailing particles from tail to lead
+    for (let i = particleCount - 1; i >= 0; i--) {
+      const trailOffset = (i / particleCount) * 0.12;
+      const partProgress = progress - trailOffset;
+      if (partProgress < 0) continue;
+
+      const pos = ParticleSystem.interpolate(path, partProgress);
+      if (!pos) continue;
+
+      const size = i === 0 ? 5.0 : 3.8 - i * 0.5;
+
+      // Glow halo
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = i === 0 ? 14 : 8;
+      ctx.fillStyle = color;
+
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, size, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bright inner core
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, size * 0.45, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Optional payload badge on the lead particle
+    if (payloadText && progress >= 0.05 && progress <= 0.95) {
+      const leadPos = ParticleSystem.interpolate(path, progress);
+      if (leadPos) {
+        ctx.shadowBlur = 0;
+        ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+        const textWidth = ctx.measureText(payloadText).width;
+        const badgeW = textWidth + 10;
+        const badgeH = 16;
+        const badgeX = leadPos.x - badgeW / 2;
+        const badgeY = leadPos.y - 20;
+
+        ctx.fillStyle = 'rgba(10, 15, 26, 0.92)';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 3);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = color;
+        ctx.fillText(payloadText, badgeX + 5, badgeY + 12);
+      }
+    }
+
+    ctx.restore();
+  }
+
+  private interpolatePath(points: Point2D[], progress: number): Point2D | null {
+    return ParticleSystem.interpolate(points, progress);
   }
 }

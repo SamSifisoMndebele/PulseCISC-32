@@ -23,6 +23,7 @@ export class CPU {
 
   // Special Registers
   public eip: number = 0;
+  public oldEip: number = 0;
   public ir: number = 0;
   public mar: number = 0;
   public mdr: number = 0;
@@ -42,6 +43,7 @@ export class CPU {
 
   // State Machine
   public phase: CPUPhase = 'FETCH';
+  public stepPhase?: CPUPhase;
   public decoded: DecodedInstruction | null = null;
   public activeBuses: ActiveBusId[] = [];
   public cycles: number = 0;
@@ -70,6 +72,7 @@ export class CPU {
    */
   public reset(): void {
     this.eip = 0x0000;
+    this.oldEip = 0x0000;
     this.ir = 0;
     this.mar = 0;
     this.mdr = 0;
@@ -85,6 +88,7 @@ export class CPU {
 
     this.flags = { zf: false, sf: false, of: false };
     this.phase = 'FETCH';
+    this.stepPhase = undefined;
     this.decoded = null;
     this.activeBuses = [];
     this.cycles = 0;
@@ -141,6 +145,7 @@ export class CPU {
     this.lastModifiedReg = null;
     this.lastModifiedMem = null;
     this.activeBuses = [];
+    this.stepPhase = this.phase;
 
     switch (this.phase) {
       case 'FETCH':
@@ -184,6 +189,7 @@ export class CPU {
   // --- Phase Handlers ---
 
   private executeFetch(): void {
+    this.oldEip = this.eip;
     this.mar = this.eip;
     this.ir = this.memory.readWord(this.mar);
     const oldEip = this.eip;
@@ -743,6 +749,7 @@ export class CPU {
   public getSnapshot(): CPUMicroState {
     return {
       eip: this.eip,
+      oldEip: this.oldEip,
       ir: this.ir,
       mar: this.mar,
       mdr: this.mdr,
@@ -755,6 +762,8 @@ export class CPU {
       registers: new Uint32Array(this.registers),
       flags: { ...this.flags },
       phase: this.phase,
+      stepPhase: this.stepPhase,
+      codeWord: this.memory.readWord(this.mar),
       decoded: this.decoded ? { ...this.decoded } : null,
       activeBuses: [...this.activeBuses],
       cycles: this.cycles,

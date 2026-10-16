@@ -1,9 +1,21 @@
 // PulseCISC-32 Datapath Canvas Renderer
 import type { CPUMicroState, ActiveBusId } from '../core/types';
-import { toHex32, REGISTER_NAMES, SUB_REGISTER_NAMES } from '../core/isa';
+import { toHex32, toInt32, REGISTER_NAMES, SUB_REGISTER_NAMES } from '../core/isa';
 import { THEME } from './theme';
 import { ParticleSystem } from './particles';
 import type { Point2D } from './particles';
+
+export interface DatapathComponentInfo {
+  id: string;
+  title: string;
+  category: 'PC' | 'MEMORY' | 'REGISTER' | 'ALU' | 'CONTROL';
+  role: string;
+  summary: string;
+  pedagogicalInsight?: string;
+  whyExplanation?: string;
+  mnemonic?: string;
+  bounds: { x: number; y: number; w: number; h: number };
+}
 
 export class DatapathRenderer {
   private canvas: HTMLCanvasElement;
@@ -13,6 +25,7 @@ export class DatapathRenderer {
   // Track previous state for particle emission triggers
   private prevCycles: number = -1;
   private prevPhase: string = '';
+  private currentTransform = { scale: 1, offsetX: 0, offsetY: 0 };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -55,6 +68,7 @@ export class DatapathRenderer {
     // Center if aspect ratio differs
     const offsetX = (width - 1100 * scale) / 2;
     const offsetY = (height - 680 * scale) / 2;
+    this.currentTransform = { scale, offsetX, offsetY };
     ctx.translate(offsetX, offsetY);
     ctx.scale(scale, scale);
 
@@ -125,8 +139,24 @@ export class DatapathRenderer {
     this.drawControlUnit(ctx, bCU, state);
 
     this.drawRegisterFile(ctx, bRegs, state);
-    this.drawLatch(ctx, bLatchA, 'Latch A', state.latchA, state.activeBuses.includes('REGS_TO_LATCHES'));
-    this.drawLatch(ctx, bLatchB, 'Latch B', state.latchB, state.activeBuses.includes('REGS_TO_LATCHES'));
+    this.drawLatch(
+      ctx,
+      bLatchA,
+      'Latch A',
+      state.latchA,
+      state.activeBuses.includes('REGS_TO_LATCHES'),
+      state.latchASource,
+      false
+    );
+    this.drawLatch(
+      ctx,
+      bLatchB,
+      'Latch B',
+      state.latchB,
+      state.activeBuses.includes('REGS_TO_LATCHES') || Boolean(state.latchBIsImmediate),
+      state.latchBSource,
+      Boolean(state.latchBIsImmediate)
+    );
 
     this.drawALU(ctx, bALU, state);
     this.drawFlags(ctx, bFlags, state.flags);
@@ -596,12 +626,50 @@ export class DatapathRenderer {
     box: { x: number; y: number; w: number; h: number },
     label: string,
     val: number,
-    active: boolean
+    active: boolean,
+    sourceTag?: string,
+    isImmediate?: boolean
   ): void {
-    this.drawCard(ctx, box, label, active, THEME.textAccent);
-    ctx.fillStyle = active ? THEME.textAccent : THEME.textPrimary;
-    ctx.font = '12px "JetBrains Mono", monospace';
-    ctx.fillText(toHex32(val), box.x + 10, box.y + 40);
+    const activeColor = isImmediate ? '#f59e0b' : THEME.textAccent;
+    this.drawCard(ctx, box, label, active, activeColor);
+
+    // Source Tag Badge in upper right of card
+    if (sourceTag && sourceTag !== 'NONE') {
+      ctx.save();
+      const badgeText = isImmediate
+        ? 'IMM'
+        : sourceTag.startsWith('REG')
+        ? 'REG'
+        : sourceTag.startsWith('MEM')
+        ? 'MEM'
+        : sourceTag;
+      const badgeBg = isImmediate ? 'rgba(245, 158, 11, 0.25)' : 'rgba(56, 189, 248, 0.2)';
+      const badgeBorder = isImmediate ? '#f59e0b' : '#38bdf8';
+      const badgeFg = isImmediate ? '#fbbf24' : '#7dd3fc';
+
+      ctx.fillStyle = badgeBg;
+      ctx.strokeStyle = badgeBorder;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(box.x + box.w - 48, box.y + 5, 42, 14, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = badgeFg;
+      ctx.font = 'bold 8.5px "Inter", sans-serif';
+      ctx.fillText(badgeText, box.x + box.w - 43, box.y + 15);
+      ctx.restore();
+    }
+
+    // Hex Value
+    ctx.fillStyle = active ? (isImmediate ? '#fef08a' : THEME.textAccent) : THEME.textPrimary;
+    ctx.font = '11.5px "JetBrains Mono", monospace';
+    ctx.fillText(toHex32(val), box.x + 8, box.y + 35);
+
+    // Decimal Value
+    ctx.fillStyle = THEME.textMuted;
+    ctx.font = '9.5px "JetBrains Mono", monospace';
+    ctx.fillText(`Dec: ${toInt32(val)}`, box.x + 8, box.y + 48);
   }
 
   private drawALU(
@@ -710,6 +778,207 @@ export class DatapathRenderer {
       ctx.fillStyle = THEME.textPrimary;
       ctx.font = '11px monospace';
       ctx.fillText(toHex32(val), box.x + 55, y + 16);
+    }
+  }
+
+  /**
+   * Hit test to find which datapath component the user is hovering over.
+   */
+  public getComponentAt(screenX: number, screenY: number): DatapathComponentInfo | null {
+    const scale = this.currentTransform.scale;
+    const offsetX = this.currentTransform.offsetX;
+    const offsetY = this.currentTransform.offsetY;
+
+    const unscaledX = (screenX - offsetX) / scale;
+    const unscaledY = (screenY - offsetY) / scale;
+
+    const boxes: Record<string, { x: number; y: number; w: number; h: number }> = {
+      EIP: { x: 50, y: 80, w: 130, h: 65 },
+      ADDER: { x: 50, y: 15, w: 100, h: 42 },
+      CODE_MEM: { x: 230, y: 70, w: 150, h: 85 },
+      IR: { x: 420, y: 70, w: 170, h: 85 },
+      CU: { x: 630, y: 65, w: 190, h: 95 },
+      REGS: { x: 260, y: 220, w: 210, h: 260 },
+      LATCH_A: { x: 510, y: 240, w: 110, h: 55 },
+      LATCH_B: { x: 510, y: 320, w: 110, h: 55 },
+      ALU: { x: 670, y: 250, w: 130, h: 140 },
+      FLAGS: { x: 820, y: 240, w: 110, h: 70 },
+      ALU_OUT: { x: 820, y: 330, w: 120, h: 55 },
+      MAR: { x: 970, y: 230, w: 100, h: 55 },
+      MDR: { x: 970, y: 310, w: 100, h: 55 },
+      DATA_RAM: { x: 950, y: 410, w: 135, h: 160 },
+    };
+
+    for (const [id, box] of Object.entries(boxes)) {
+      if (
+        unscaledX >= box.x &&
+        unscaledX <= box.x + box.w &&
+        unscaledY >= box.y &&
+        unscaledY <= box.y + box.h
+      ) {
+        return this.getComponentMetadata(id, box);
+      }
+    }
+    return null;
+  }
+
+  private getComponentMetadata(id: string, bounds: { x: number; y: number; w: number; h: number }): DatapathComponentInfo {
+    switch (id) {
+      case 'EIP':
+        return {
+          id: 'EIP',
+          title: 'EIP (Extended Instruction Pointer)',
+          category: 'PC',
+          role: 'Points to memory address of the next instruction',
+          summary: 'Stores the 32-bit address where the CPU fetches instructions from Code Memory.',
+          pedagogicalInsight: 'Notice that EIP advances by +4 during Fetch before Execution finishes!',
+          whyExplanation: '1. Independent Hardware: The dedicated +4 Adder runs in parallel with memory reading (0 clock penalty).\n2. Default Assumption: Code is sequential 95% of the time, so priming the next instruction saves cycles.\n3. Safe for Jumps: If this instruction is a branch or jump (JE/JNE/JMP), the Execute phase simply overwrites EIP with the target address.\n4. Instruction Word Saved: The current instruction is safely frozen inside the Instruction Register (IR), so advancing EIP will never lose your place!',
+          mnemonic: '"Read the current page, slide the bookmark to the next."',
+          bounds,
+        };
+
+      case 'ADDER':
+        return {
+          id: 'ADDER',
+          title: '+4 Dedicated Adder',
+          category: 'ALU',
+          role: 'Advances EIP to the next 32-bit instruction word',
+          summary: 'Dedicated hardware adder that computes EIP_next = EIP + 4.',
+          pedagogicalInsight: 'Why +4 bytes instead of +1?',
+          whyExplanation: 'PulseCISC-32 memory is byte-addressable (1 address = 1 byte). Since each instruction word is 32 bits (4 bytes) wide, jumping to the next instruction requires adding 4 to the memory address (0x0000 -> 0x0004 -> 0x0008).',
+          mnemonic: '32 bits = 4 bytes per word.',
+          bounds,
+        };
+
+      case 'CODE_MEM':
+        return {
+          id: 'CODE_MEM',
+          title: 'Code Memory (0x000 - 0x7FF)',
+          category: 'MEMORY',
+          role: 'Stores the program machine code instructions',
+          summary: 'Addressed by MAR during Fetch to output a 32-bit instruction word into IR.',
+          pedagogicalInsight: 'Separate Code & Data memory prevents code from accidentally overwriting itself (Harvard architecture model).',
+          bounds,
+        };
+
+      case 'IR':
+        return {
+          id: 'IR',
+          title: 'Instruction Register (IR)',
+          category: 'REGISTER',
+          role: 'Holds the active 32-bit instruction word',
+          summary: 'Latches the instruction bits so the Control Unit and datapath can process them over multiple clock cycles.',
+          pedagogicalInsight: 'Because IR freezes the instruction, EIP can safely increment without losing current execution state.',
+          bounds,
+        };
+
+      case 'CU':
+        return {
+          id: 'CU',
+          title: 'Control Unit (Finite State Machine)',
+          category: 'CONTROL',
+          role: 'Brain of the processor; drives all multiplexers and enable signals',
+          summary: 'Inspects opcode bits and cycles through FETCH -> DECODE -> EXECUTE -> MEMORY -> WRITEBACK.',
+          bounds,
+        };
+
+      case 'REGS':
+        return {
+          id: 'REGS',
+          title: 'Register File (EAX - ESP)',
+          category: 'REGISTER',
+          role: '8 x 32-bit general purpose high-speed storage',
+          summary: 'Has 2 read ports (feeding Latches A & B) and 1 writeback port (from ALU_Out or MDR).',
+          pedagogicalInsight: 'Reading registers takes 0 extra clock cycles; writing occurs on the clock edge during WRITEBACK.',
+          bounds,
+        };
+
+      case 'LATCH_A':
+        return {
+          id: 'LATCH_A',
+          title: 'ALU Latch A (Destination / Operand 1)',
+          category: 'REGISTER',
+          role: 'Holds the first operand for the ALU',
+          summary: 'Latches the value of the destination register or base pointer during Decode.',
+          pedagogicalInsight: 'Input latches prevent feedback loops and electrical race conditions while the ALU computes.',
+          bounds,
+        };
+
+      case 'LATCH_B':
+        return {
+          id: 'LATCH_B',
+          title: 'ALU Latch B (Source / Operand 2)',
+          category: 'REGISTER',
+          role: 'Holds second operand from Register File or Immediate field',
+          summary: 'Can receive a value from a register [REG] or extracted directly from instruction bits [IMM].',
+          pedagogicalInsight: 'Check the badge: [IMM] means the number came straight from instruction bits, not memory!',
+          mnemonic: 'Amber = Literal Constant; Blue = Register File.',
+          bounds,
+        };
+
+      case 'ALU':
+        return {
+          id: 'ALU',
+          title: '32-Bit Arithmetic Logic Unit (ALU)',
+          category: 'ALU',
+          role: 'Performs arithmetic, logic, and comparisons',
+          summary: 'Computes Latch_A [OP] Latch_B, places result in ALU_Out, and updates condition flags in EFLAGS.',
+          bounds,
+        };
+
+      case 'FLAGS':
+        return {
+          id: 'FLAGS',
+          title: 'EFLAGS (Condition Codes)',
+          category: 'CONTROL',
+          role: 'Status flags recording arithmetic side effects',
+          summary: 'ZF (Zero Flag) = 1 if result is 0; SF (Sign Flag) = 1 if negative; OF = 1 if signed overflow.',
+          pedagogicalInsight: 'Conditional jumps (JE / JNE) inspect ZF to determine whether to branch.',
+          bounds,
+        };
+
+      case 'ALU_OUT':
+        return {
+          id: 'ALU_OUT',
+          title: 'ALU Output Latch',
+          category: 'REGISTER',
+          role: 'Buffers ALU result before writeback or memory addressing',
+          summary: 'Routes computed values to either MAR (for memory address calculation) or Register File (for writeback).',
+          bounds,
+        };
+
+      case 'MAR':
+        return {
+          id: 'MAR',
+          title: 'Memory Address Register (MAR)',
+          category: 'MEMORY',
+          role: 'Holds the physical address for RAM access',
+          summary: 'Specifies which memory byte address the CPU is reading from or writing to.',
+          mnemonic: 'MAR = "Where to look in RAM".',
+          bounds,
+        };
+
+      case 'MDR':
+        return {
+          id: 'MDR',
+          title: 'Memory Data Register (MDR)',
+          category: 'MEMORY',
+          role: 'Holds the 32-bit data word travelling to or from RAM',
+          summary: 'Receives words read from RAM (Loads) or holds data waiting to be written to RAM (Stores).',
+          mnemonic: 'MDR = "What is inside the envelope".',
+          bounds,
+        };
+
+      case 'DATA_RAM':
+      default:
+        return {
+          id: 'DATA_RAM',
+          title: 'Data RAM (0x800 - 0xFFF)',
+          category: 'MEMORY',
+          role: 'Volatile memory storing variables and program data',
+          summary: 'Read and written only during the MEMORY phase of memory instructions (MOV reg, [mem]).',
+          bounds,
+        };
     }
   }
 }

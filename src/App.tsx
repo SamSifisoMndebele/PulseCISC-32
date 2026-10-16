@@ -38,7 +38,7 @@ export function App() {
 
   // Execution Controls
   const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [clockSpeed, setClockSpeed] = useState<number>(2.0); // 2 Hz default
+  const [clockSpeed, setClockSpeed] = useState<number>(1.0); // 1 Hz default
   const [isTraceOpen, setIsTraceOpen] = useState<boolean>(true);
   const [isCheatsheetOpen, setIsCheatsheetOpen] = useState<boolean>(false);
 
@@ -308,6 +308,11 @@ export function App() {
                   aluOut={cpuState.aluOut}
                   flags={cpuState.flags}
                   decodedString={cpuState.decoded?.assemblyString}
+                  latchA={cpuState.latchA}
+                  latchB={cpuState.latchB}
+                  latchASource={cpuState.latchASource}
+                  latchBSource={cpuState.latchBSource}
+                  latchBIsImmediate={cpuState.latchBIsImmediate}
                 />
               </>
             ) : (

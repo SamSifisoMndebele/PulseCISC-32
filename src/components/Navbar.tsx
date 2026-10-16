@@ -134,9 +134,9 @@ export const Navbar: React.FC<NavbarProps> = ({
         <span className="text-xs text-slate-400">Clock:</span>
         <input
           type="range"
-          min="0.5"
+          min="0.1"
           max="30"
-          step="0.5"
+          step="0.1"
           value={clockSpeed}
           onChange={(e) => onClockSpeedChange(parseFloat(e.target.value))}
           className="w-24 accent-sky-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"

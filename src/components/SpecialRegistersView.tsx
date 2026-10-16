@@ -11,6 +11,11 @@ interface SpecialRegistersViewProps {
   aluOut: number;
   flags: EFLAGS;
   decodedString?: string;
+  latchA?: number;
+  latchB?: number;
+  latchASource?: string;
+  latchBSource?: string;
+  latchBIsImmediate?: boolean;
 }
 
 export const SpecialRegistersView: React.FC<SpecialRegistersViewProps> = ({
@@ -21,6 +26,11 @@ export const SpecialRegistersView: React.FC<SpecialRegistersViewProps> = ({
   aluOut,
   flags,
   decodedString,
+  latchA = 0,
+  latchB = 0,
+  latchASource = 'NONE',
+  latchBSource = 'NONE',
+  latchBIsImmediate = false,
 }) => {
   return (
     <div className="flex flex-col bg-[#0b0f19] border-t border-slate-800 text-slate-100 font-mono text-xs p-3 space-y-3">
@@ -90,6 +100,38 @@ export const SpecialRegistersView: React.FC<SpecialRegistersViewProps> = ({
                 {decodedString}
               </span>
             )}
+          </div>
+
+          {/* Latch A */}
+          <div className="p-2 bg-slate-900/70 border border-slate-800 rounded-lg">
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-slate-400">Latch A</span>
+              {latchASource !== 'NONE' && (
+                <span className="text-[9px] bg-sky-950 text-sky-400 px-1 rounded border border-sky-800">
+                  {latchASource}
+                </span>
+              )}
+            </div>
+            <span className="text-sky-300 font-bold">{toHex32(latchA)}</span>
+          </div>
+
+          {/* Latch B */}
+          <div className="p-2 bg-slate-900/70 border border-slate-800 rounded-lg">
+            <div className="flex items-center justify-between text-[10px]">
+              <span className="text-slate-400">Latch B</span>
+              {latchBSource !== 'NONE' && (
+                <span className={`text-[9px] px-1 rounded border ${
+                  latchBIsImmediate
+                    ? 'bg-amber-950 text-amber-300 border-amber-800'
+                    : 'bg-sky-950 text-sky-400 border-sky-800'
+                }`}>
+                  {latchBSource}
+                </span>
+              )}
+            </div>
+            <span className={latchBIsImmediate ? 'text-amber-300 font-bold' : 'text-sky-300 font-bold'}>
+              {toHex32(latchB)}
+            </span>
           </div>
 
           {/* MAR */}

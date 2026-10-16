@@ -100,6 +100,12 @@ export type ActiveBusId =
   | 'IMM_TO_REG_WB'
   | 'REG_TO_CONSOLE';
 
+export interface OperandProvenance {
+  name: string;
+  type: 'REG' | 'IMM' | 'MEM' | 'NONE';
+  value: number;
+}
+
 export interface TraceRecord {
   id: number;
   cycle: number;
@@ -107,8 +113,11 @@ export interface TraceRecord {
   eip: number;
   phase: CPUPhase;
   microOp: string;
+  studentExplanation?: string;
   details: string;
   activeBuses: ActiveBusId[];
+  latchAProvenance?: OperandProvenance;
+  latchBProvenance?: OperandProvenance;
   timestamp: number;
 }
 
@@ -120,6 +129,9 @@ export interface CPUMicroState {
   aluOut: number;
   latchA: number;
   latchB: number;
+  latchASource?: string;
+  latchBSource?: string;
+  latchBIsImmediate?: boolean;
   registers: Uint32Array; // 8 registers: EAX(0) to ESP(7)
   flags: EFLAGS;
   phase: CPUPhase;

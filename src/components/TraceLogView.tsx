@@ -1,9 +1,11 @@
 // PulseCISC-32 Split Drawer: Micro-Op RTL Trace (Left) & System Console (Right)
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import type { TraceRecord, ConsoleOutputEntry } from '../core/types';
 import { THEME } from '../visualizer/theme';
-import { Trash2, ChevronDown, ChevronUp, Terminal, Monitor } from 'lucide-react';
+import { Trash2, ChevronDown, ChevronUp, Terminal, Monitor, BookOpen, Code2, Layers, Filter, Info } from 'lucide-react';
 import { toHex32 } from '../core/isa';
+
+export type TraceViewMode = 'student' | 'synced' | 'standard';
 
 interface TraceLogViewProps {
   logs: TraceRecord[];
@@ -25,6 +27,11 @@ export const TraceLogView: React.FC<TraceLogViewProps> = ({
   const traceScrollRef = useRef<HTMLDivElement>(null);
   const consoleScrollRef = useRef<HTMLDivElement>(null);
 
+  // Dual-view mode: 'student' (plain English) vs 'synced' (both) vs 'standard' (formal RTL)
+  const [viewMode, setViewMode] = useState<TraceViewMode>('student');
+  const [selectedPhase, setSelectedPhase] = useState<string>('ALL');
+  const [expandedRecordId, setExpandedRecordId] = useState<number | null>(null);
+
   // Auto-scroll trace log to bottom
   useEffect(() => {
     if (traceScrollRef.current && isOpen) {
@@ -38,6 +45,12 @@ export const TraceLogView: React.FC<TraceLogViewProps> = ({
       consoleScrollRef.current.scrollTop = consoleScrollRef.current.scrollHeight;
     }
   }, [consoleOutput.length, isOpen]);
+
+  // Filter logs by selected phase
+  const filteredLogs = logs.filter((record) => {
+    if (selectedPhase === 'ALL') return true;
+    return record.phase === selectedPhase;
+  });
 
   return (
     <div className="flex flex-col bg-[#070a12] border-t border-slate-800 text-slate-200 font-mono text-xs select-none">
@@ -79,26 +92,84 @@ export const TraceLogView: React.FC<TraceLogViewProps> = ({
 
       {/* Drawer Body (Divided into 2 Side-by-Side Panes) */}
       {isOpen && (
-        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-800 h-52 bg-[#060910]">
-          {/* PANE 1: Micro-Operation RTL Execution Trace (Left) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-800 h-64 bg-[#060910]">
+          {/* PANE 1: Micro-Operation Execution Trace (Left) */}
           <div className="flex flex-col h-full overflow-hidden">
-            {/* Pane Header */}
-            <div className="flex items-center justify-between px-3 py-1.5 bg-slate-950/70 border-b border-slate-800/80 text-[11px]">
-              <div className="flex items-center gap-1.5 text-slate-300 font-semibold">
-                <Terminal className="w-3.5 h-3.5 text-sky-400" />
-                <span>Micro-Op Log (Datapath States)</span>
+            {/* Pane Sub-Header / Tool Controls */}
+            <div className="flex flex-wrap items-center justify-between px-3 py-1.5 bg-slate-950/80 border-b border-slate-800/80 text-[11px] gap-2">
+              {/* Segmented View Mode Controller */}
+              <div className="flex items-center bg-slate-900 border border-slate-800 rounded-md p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('student')}
+                  title="Plain-English operational explanation for introductory students"
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    viewMode === 'student'
+                      ? 'bg-sky-500/20 text-sky-300 border border-sky-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <BookOpen className="w-3 h-3" />
+                  <span>Student Mode</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('synced')}
+                  title="Side-by-side view showing both plain-English narrative and formal RTL"
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    viewMode === 'synced'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Layers className="w-3 h-3" />
+                  <span>Dual Synced</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('standard')}
+                  title="Formal mathematical Register-Transfer Level (RTL) hardware notation"
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+                    viewMode === 'standard'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Code2 className="w-3 h-3" />
+                  <span>Standard RTL</span>
+                </button>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClearLogs();
-                }}
-                title="Clear Trace Log"
-                className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-rose-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-                <span>Clear</span>
-              </button>
+
+              {/* Phase Filter & Clear Controls */}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 text-slate-400 text-[10px]">
+                  <Filter className="w-3 h-3 text-slate-500" />
+                  <select
+                    value={selectedPhase}
+                    onChange={(e) => setSelectedPhase(e.target.value)}
+                    className="bg-slate-900 border border-slate-800 text-slate-300 rounded px-1.5 py-0.5 text-[10px] focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="ALL">All Phases</option>
+                    <option value="FETCH">Fetch</option>
+                    <option value="DECODE">Decode</option>
+                    <option value="EXECUTE">Execute</option>
+                    <option value="MEMORY">Memory</option>
+                    <option value="WRITEBACK">Writeback</option>
+                  </select>
+                </div>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClearLogs();
+                  }}
+                  title="Clear Trace Log"
+                  className="flex items-center gap-1 text-[10px] text-slate-400 hover:text-rose-400 px-1.5 py-0.5 rounded hover:bg-slate-800 transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Clear</span>
+                </button>
+              </div>
             </div>
 
             {/* Trace List */}
@@ -106,42 +177,130 @@ export const TraceLogView: React.FC<TraceLogViewProps> = ({
               ref={traceScrollRef}
               className="flex-1 overflow-y-auto p-2 font-mono text-[11px] space-y-1 bg-[#070b14]"
             >
-              {logs.length === 0 ? (
+              {filteredLogs.length === 0 ? (
                 <div className="text-slate-500 p-4 text-center">
-                  No micro-operations recorded. Click Step Micro, Step Inst, or Run.
+                  {logs.length === 0
+                    ? 'No micro-operations recorded. Click Step Micro, Step Inst, or Run.'
+                    : `No log entries found for phase "${selectedPhase}".`}
                 </div>
               ) : (
-                logs.map((record) => {
+                filteredLogs.map((record) => {
                   const phaseInfo = THEME.phases[record.phase] || THEME.phases.FETCH;
+                  const isExpanded = expandedRecordId === record.id;
+                  const hasImmProvenance = record.latchBProvenance?.type === 'IMM';
+
                   return (
                     <div
                       key={record.id}
-                      className="flex items-center gap-2 px-2 py-1 rounded bg-slate-900/40 border border-slate-800/60 hover:bg-slate-900/80 transition-colors"
+                      onClick={() => setExpandedRecordId(isExpanded ? null : record.id)}
+                      className={`flex flex-col p-1.5 rounded border transition-colors cursor-pointer ${
+                        isExpanded
+                          ? 'bg-slate-900 border-sky-500/50 shadow-sm shadow-sky-500/10'
+                          : 'bg-slate-900/40 border-slate-800/60 hover:bg-slate-900/80'
+                      }`}
                     >
-                      <span className="text-slate-500 text-[10px] min-w-[45px]">
-                        #{record.cycle}
-                      </span>
+                      {/* Main Row Summary */}
+                      <div className="flex items-start gap-2">
+                        {/* Cycle Count */}
+                        <span className="text-slate-500 text-[10px] min-w-[38px] pt-0.5">
+                          #{record.cycle}
+                        </span>
 
-                      <span className="text-slate-400 font-mono text-[10px] min-w-[55px]">
-                        {toHex32(record.eip)}
-                      </span>
+                        {/* Program Counter */}
+                        <span className="text-slate-400 font-mono text-[10px] min-w-[50px] pt-0.5">
+                          {toHex32(record.eip)}
+                        </span>
 
-                      {/* Phase Badge */}
-                      <span
-                        className="px-1.5 py-0.2 rounded text-[9px] font-bold uppercase min-w-[60px] text-center"
-                        style={{
-                          backgroundColor: `${phaseInfo.primary}20`,
-                          color: phaseInfo.primary,
-                          border: `1px solid ${phaseInfo.primary}40`,
-                        }}
-                      >
-                        {record.phase}
-                      </span>
+                        {/* Phase Badge */}
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase min-w-[55px] text-center"
+                          style={{
+                            backgroundColor: `${phaseInfo.primary}20`,
+                            color: phaseInfo.primary,
+                            border: `1px solid ${phaseInfo.primary}40`,
+                          }}
+                        >
+                          {record.phase}
+                        </span>
 
-                      {/* Micro-Op RTL */}
-                      <span className="text-sky-300 text-[11px] truncate flex-1" title={record.microOp}>
-                        {record.microOp}
-                      </span>
+                        {/* Provenance Badge (if immediate operand) */}
+                        {hasImmProvenance && (
+                          <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.2 rounded text-[8.5px] font-bold">
+                            IMM({record.latchBProvenance?.value})
+                          </span>
+                        )}
+
+                        {/* Text Content based on Selected View Mode */}
+                        <div className="flex-1 min-w-0">
+                          {viewMode === 'student' && (
+                            <span className="text-slate-200 text-[11px] leading-relaxed block break-words">
+                              {record.studentExplanation || record.microOp}
+                            </span>
+                          )}
+
+                          {viewMode === 'standard' && (
+                            <span className="text-sky-300 font-mono text-[11px] leading-relaxed block break-words">
+                              {record.microOp}
+                            </span>
+                          )}
+
+                          {viewMode === 'synced' && (
+                            <div className="space-y-0.5">
+                              <span className="text-slate-200 text-[11px] font-sans leading-tight block break-words">
+                                {record.studentExplanation || record.details}
+                              </span>
+                              <span className="text-sky-400/90 font-mono text-[10px] block truncate">
+                                &gt; RTL: {record.microOp}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Expand Indicator */}
+                        <span className="text-slate-500 hover:text-slate-300 pt-0.5">
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </span>
+                      </div>
+
+                      {/* Expandable Architectural Details Box */}
+                      {isExpanded && (
+                        <div className="mt-2 pt-2 border-t border-slate-800 text-[10px] text-slate-300 space-y-1 bg-slate-950/60 p-2 rounded">
+                          <div className="flex items-center gap-1.5 text-sky-400 font-semibold">
+                            <Info className="w-3 h-3" />
+                            <span>Microarchitecture State &amp; Bus Routes</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">Formal RTL: </span>
+                            <span className="text-emerald-300 font-mono">{record.microOp}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">Student Translation: </span>
+                            <span className="text-slate-200 font-sans">{record.studentExplanation}</span>
+                          </div>
+                          <div>
+                            <span className="text-slate-500">Active Bus Lines: </span>
+                            <span className="text-amber-300 font-mono">
+                              {record.activeBuses.join(', ') || 'Internal latch stabilization'}
+                            </span>
+                          </div>
+                          {record.latchAProvenance && (
+                            <div>
+                              <span className="text-slate-500">Latch A: </span>
+                              <span className="text-sky-300 font-mono">
+                                {record.latchAProvenance.name} = {toHex32(record.latchAProvenance.value)}
+                              </span>
+                            </div>
+                          )}
+                          {record.latchBProvenance && (
+                            <div>
+                              <span className="text-slate-500">Latch B: </span>
+                              <span className={hasImmProvenance ? 'text-amber-300 font-mono' : 'text-sky-300 font-mono'}>
+                                {record.latchBProvenance.name} = {toHex32(record.latchBProvenance.value)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })

@@ -6,6 +6,7 @@ import type {
   ConsoleOutputEntry,
   DecodedInstruction,
   EFLAGS,
+  OperandProvenance,
   RegisterId,
   TraceRecord,
 } from './types';
@@ -28,6 +29,9 @@ export class CPU {
   public aluOut: number = 0;
   public latchA: number = 0;
   public latchB: number = 0;
+  public latchASource: string = 'NONE';
+  public latchBSource: string = 'NONE';
+  public latchBIsImmediate: boolean = false;
 
   // EFLAGS
   public flags: EFLAGS = {
@@ -72,6 +76,9 @@ export class CPU {
     this.aluOut = 0;
     this.latchA = 0;
     this.latchB = 0;
+    this.latchASource = 'NONE';
+    this.latchBSource = 'NONE';
+    this.latchBIsImmediate = false;
     this.registers.fill(0);
     // ESP (Stack Pointer) defaults to 0x0FFC (top of Data Segment)
     this.registers[7] = 0x0ffc;
@@ -189,10 +196,14 @@ export class CPU {
       'EIP_INCREMENT',
     ];
 
+    const formalRTL = `MAR <- EIP (${toHex32(oldEip)}); IR <- MEM[${toHex32(this.mar)}] (${toHex32(this.ir)}); EIP <- EIP + 4 (${toHex32(this.eip)})`;
+    const studentEnglish = `Fetch: Read memory address ${toHex32(oldEip)} into IR; advanced EIP to next instruction (+4 bytes to ${toHex32(this.eip)}).`;
+
     this.addTrace(
       'FETCH',
-      `MAR <- EIP (${toHex32(oldEip)}); IR <- MEM[${toHex32(this.mar)}] (${toHex32(this.ir)}); EIP <- EIP + 4 (${toHex32(this.eip)})`,
-      `Fetched 32-bit CISC instruction at ${toHex32(oldEip)}`
+      formalRTL,
+      `Fetched 32-bit CISC instruction at ${toHex32(oldEip)}`,
+      studentEnglish
     );
 
     this.phase = 'DECODE';
@@ -206,35 +217,71 @@ export class CPU {
       this.phase = 'HALTED';
       this.halted = true;
       this.activeBuses = ['IR_TO_CU'];
-      this.addTrace('DECODE', 'HLT instruction decoded. CPU halted.', 'Processor clock stopped.');
+      this.addTrace(
+        'DECODE',
+        'HLT instruction decoded. CPU halted.',
+        'Processor clock stopped.',
+        'Decode: HLT instruction encountered. Stopping processor clock.'
+      );
       return;
     }
+
+    let latchASource = 'NONE';
+    let latchBSource = 'NONE';
+    this.latchBIsImmediate = false;
 
     // Load operand values into Latches A & B
     if (dest.type === 'REG' && dest.reg !== undefined) {
       this.latchA = this.readRegister(dest.reg, dest.is16Bit);
+      const regName = dest.is16Bit ? SUB_REGISTER_NAMES[dest.reg] : REGISTER_NAMES[dest.reg];
+      latchASource = `REG(${regName})`;
     } else if (dest.type === 'MEM' && dest.memBaseReg !== undefined) {
       this.latchA = this.readRegister(dest.memBaseReg, false);
+      latchASource = `MEM_BASE(${REGISTER_NAMES[dest.memBaseReg]})`;
     } else {
       this.latchA = 0;
     }
 
     if (src.type === 'REG' && src.reg !== undefined) {
       this.latchB = this.readRegister(src.reg, src.is16Bit);
+      const regName = src.is16Bit ? SUB_REGISTER_NAMES[src.reg] : REGISTER_NAMES[src.reg];
+      latchBSource = `REG(${regName})`;
     } else if (src.type === 'IMM' && src.imm !== undefined) {
       this.latchB = src.imm;
+      latchBSource = `IMM(${src.imm})`;
+      this.latchBIsImmediate = true;
     } else if (src.type === 'MEM' && src.memBaseReg !== undefined) {
       this.latchB = this.readRegister(src.memBaseReg, false);
+      latchBSource = `MEM_BASE(${REGISTER_NAMES[src.memBaseReg]})`;
     } else {
       this.latchB = 0;
     }
 
+    this.latchASource = latchASource;
+    this.latchBSource = latchBSource;
+
     this.activeBuses = ['IR_TO_CU', 'IR_TO_REG_READ', 'REGS_TO_LATCHES'];
+
+    const formalRTL = `Decoded: ${this.decoded.assemblyString}; Latch_A <- ${latchASource} (${toHex32(this.latchA)}); Latch_B <- ${latchBSource} (${toHex32(this.latchB)})`;
+    
+    let studentEnglish: string;
+    if (src.type === 'IMM' && src.imm !== undefined) {
+      studentEnglish = `Decode: Identified '${this.decoded.assemblyString}'. Read ${dest.rawString} into Latch A; extracted literal constant ${src.imm} directly into Latch B.`;
+    } else if (src.type === 'REG') {
+      studentEnglish = `Decode: Identified '${this.decoded.assemblyString}'. Read register ${dest.rawString} into Latch A and register ${src.rawString} into Latch B.`;
+    } else if (src.type === 'MEM') {
+      studentEnglish = `Decode: Identified '${this.decoded.assemblyString}'. Read base address register ${src.rawString} into Latch B for memory address calculation.`;
+    } else {
+      studentEnglish = `Decode: Identified '${this.decoded.assemblyString}'. Loaded operands into ALU Latches A & B.`;
+    }
 
     this.addTrace(
       'DECODE',
-      `Decoded: ${this.decoded.assemblyString}; Latch_A <- ${toHex32(this.latchA)}; Latch_B <- ${toHex32(this.latchB)}`,
-      `Decoded ${mnemonic} with operands (${dest.rawString}, ${src.rawString})`
+      formalRTL,
+      `Decoded ${mnemonic} with operands (${dest.rawString}, ${src.rawString})`,
+      studentEnglish,
+      { name: latchASource, type: dest.type, value: this.latchA },
+      { name: latchBSource, type: src.type, value: this.latchB }
     );
 
     this.phase = 'EXECUTE';
@@ -249,10 +296,12 @@ export class CPU {
       case OPCODES.MOV_RI: {
         this.aluOut = toUint32(this.latchB);
         this.activeBuses = src.type === 'IMM' ? ['IMM_TO_ALU', 'ALU_TO_ALU_OUT'] : ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT'];
+        const studentText = `Execute: Routed ${this.latchBSource} (value ${toInt32(this.aluOut)}) through ALU toward writeback.`;
         this.addTrace(
           'EXECUTE',
           `ALU_Out <- ${toHex32(this.aluOut)} (MOV transfer)`,
-          `Prepared value for register writeback`
+          `Prepared value for register writeback`,
+          studentText
         );
         this.phase = 'WRITEBACK';
         break;
@@ -263,10 +312,12 @@ export class CPU {
         const lower = this.latchA & 0xffff;
         this.aluOut = toUint32(upper | lower);
         this.activeBuses = ['IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
+        const studentText = `Execute: Loaded upper 16 bits (0x${((src.imm ?? 0) & 0xffff).toString(16)}) while preserving lower half.`;
         this.addTrace(
           'EXECUTE',
           `ALU_Out <- ${toHex32(this.aluOut)} (MOVH upper 16-bits)`,
-          `Loaded upper 16 bits into high half of register`
+          `Loaded upper 16 bits into high half of register`,
+          studentText
         );
         this.phase = 'WRITEBACK';
         break;
@@ -277,10 +328,12 @@ export class CPU {
         const offset = src.memOffset ?? 0;
         this.aluOut = toUint32(this.latchB + offset);
         this.activeBuses = ['LATCHES_TO_ALU', 'IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
+        const studentText = `Execute: Computed memory load address: ${this.latchBSource} (${toHex32(this.latchB)}) + offset (${offset}) = ${toHex32(this.aluOut)}.`;
         this.addTrace(
           'EXECUTE',
           `Effective Address <- Latch_B (${toHex32(this.latchB)}) + Offset (${offset}) = ${toHex32(this.aluOut)}`,
-          `Computed memory address for load`
+          `Computed memory address for load`,
+          studentText
         );
         this.phase = 'MEMORY';
         break;
@@ -291,10 +344,12 @@ export class CPU {
         const offset = dest.memOffset ?? 0;
         this.aluOut = toUint32(this.latchA + offset);
         this.activeBuses = ['LATCHES_TO_ALU', 'IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
+        const studentText = `Execute: Computed memory store address: ${this.latchASource} (${toHex32(this.latchA)}) + offset (${offset}) = ${toHex32(this.aluOut)}.`;
         this.addTrace(
           'EXECUTE',
           `Effective Address <- Latch_A (${toHex32(this.latchA)}) + Offset (${offset}) = ${toHex32(this.aluOut)}`,
-          `Computed memory address for store`
+          `Computed memory address for store`,
+          studentText
         );
         this.phase = 'MEMORY';
         break;
@@ -321,10 +376,12 @@ export class CPU {
         this.flags = res.flags;
 
         this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT', 'ALU_TO_FLAGS'];
+        const studentText = `Execute: ALU calculated ${mnemonic}(${toInt32(this.latchA)}, ${toInt32(this.latchB)}) = ${toInt32(this.aluOut)} (${toHex32(this.aluOut)}); updated condition flags (ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}).`;
         this.addTrace(
           'EXECUTE',
           `ALU_Out <- ${mnemonic}(${toHex32(this.latchA)}, ${toHex32(this.latchB)}) = ${toHex32(this.aluOut)}; EFLAGS: ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}`,
-          `Computed ${mnemonic} and updated EFLAGS`
+          `Computed ${mnemonic} and updated EFLAGS`,
+          studentText
         );
         this.phase = 'WRITEBACK';
         break;
@@ -336,10 +393,12 @@ export class CPU {
         const res = ALU.execute('SUB', this.latchA, this.latchB);
         this.flags = res.flags;
         this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_FLAGS'];
+        const studentText = `Execute: Compared ${dest.rawString} (${toInt32(this.latchA)}) with ${src.rawString} (${toInt32(this.latchB)}). Updated flags (ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}) and discarded difference.`;
         this.addTrace(
           'EXECUTE',
           `CMP: (${toHex32(this.latchA)} - ${toHex32(this.latchB)}); EFLAGS: ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}`,
-          `Compared operands and updated condition flags`
+          `Compared operands and updated condition flags`,
+          studentText
         );
         // CMP has no writeback phase; finishes in Execute!
         this.instructionCount++;
@@ -355,14 +414,16 @@ export class CPU {
           this.addTrace(
             'EXECUTE',
             `JE Taken (ZF=1): EIP <- ${toHex32(this.eip)}`,
-            `Condition met; jumped to ${toHex32(this.eip)}`
+            `Condition met; jumped to ${toHex32(this.eip)}`,
+            `Execute: Branch condition met (ZF=1). Overrode sequential flow and jumped to address ${toHex32(this.eip)}.`
           );
         } else {
           this.activeBuses = [];
           this.addTrace(
             'EXECUTE',
             `JE Not Taken (ZF=0): Sequential EIP maintained (${toHex32(this.eip)})`,
-            `Condition false; sequential execution continues`
+            `Condition false; sequential execution continues`,
+            `Execute: Branch condition false (ZF=0). Sequential flow maintained at ${toHex32(this.eip)}.`
           );
         }
         this.instructionCount++;
@@ -378,14 +439,16 @@ export class CPU {
           this.addTrace(
             'EXECUTE',
             `JNE Taken (ZF=0): EIP <- ${toHex32(this.eip)}`,
-            `Condition met; jumped to ${toHex32(this.eip)}`
+            `Condition met; jumped to ${toHex32(this.eip)}`,
+            `Execute: Not-equal condition met (ZF=0). Overrode sequential flow and jumped to address ${toHex32(this.eip)}.`
           );
         } else {
           this.activeBuses = [];
           this.addTrace(
             'EXECUTE',
             `JNE Not Taken (ZF=1): Sequential EIP maintained (${toHex32(this.eip)})`,
-            `Condition false; sequential execution continues`
+            `Condition false; sequential execution continues`,
+            `Execute: Condition false (ZF=1). Sequential flow maintained at ${toHex32(this.eip)}.`
           );
         }
         this.instructionCount++;
@@ -400,7 +463,8 @@ export class CPU {
         this.addTrace(
           'EXECUTE',
           `JMP: EIP <- ${toHex32(this.eip)}`,
-          `Unconditional jump to ${toHex32(this.eip)}`
+          `Unconditional jump to ${toHex32(this.eip)}`,
+          `Execute: Unconditional jump. Loaded target address ${toHex32(this.eip)} into EIP.`
         );
         this.instructionCount++;
         this.phase = 'FETCH';
@@ -577,10 +641,12 @@ export class CPU {
       this.mar = this.aluOut;
       this.mdr = this.memory.readWord(this.mar);
       this.activeBuses = ['ALU_OUT_TO_MAR', 'MEM_TO_MDR'];
+      const studentText = `Memory: Sent address ${toHex32(this.mar)} to RAM; loaded 32-bit word ${toHex32(this.mdr)} into MDR.`;
       this.addTrace(
         'MEMORY',
         `MAR <- ${toHex32(this.mar)}; MDR <- Data_RAM[${toHex32(this.mar)}] (${toHex32(this.mdr)})`,
-        `Loaded 32-bit word from memory`
+        `Loaded 32-bit word from memory`,
+        studentText
       );
       this.phase = 'WRITEBACK';
     } else if (opcode === OPCODES.MOV_MR) {
@@ -602,10 +668,12 @@ export class CPU {
       }
 
       this.activeBuses = ['ALU_OUT_TO_MAR', 'LATCH_TO_MDR', 'MDR_TO_DATA_MEM'];
+      const studentText = `Memory: Sent target address ${toHex32(this.mar)} into MAR and data ${toHex32(this.mdr)} into MDR; committed write to Data RAM.`;
       this.addTrace(
         'MEMORY',
         `MAR <- ${toHex32(this.mar)}; MDR <- ${toHex32(this.mdr)}; Data_RAM[${toHex32(this.mar)}] <- MDR`,
-        `Stored word to Data RAM`
+        `Stored word to Data RAM`,
+        studentText
       );
       this.instructionCount++;
       this.phase = 'FETCH';
@@ -631,10 +699,12 @@ export class CPU {
 
       this.writeRegister(dest.reg, writeVal, dest.is16Bit);
 
+      const studentText = `Writeback: Stored computed result ${toHex32(writeVal)} (${toInt32(writeVal)}) into destination register ${regName}.`;
       this.addTrace(
         'WRITEBACK',
         `${regName} <- ${toHex32(writeVal)}`,
-        `Updated destination register ${regName}`
+        `Updated destination register ${regName}`,
+        studentText
       );
     }
 
@@ -642,7 +712,14 @@ export class CPU {
     this.phase = 'FETCH';
   }
 
-  private addTrace(phase: CPUPhase, microOp: string, details: string): void {
+  private addTrace(
+    phase: CPUPhase,
+    microOp: string,
+    details: string,
+    studentExplanation?: string,
+    latchAProvenance?: OperandProvenance,
+    latchBProvenance?: OperandProvenance
+  ): void {
     const record: TraceRecord = {
       id: this.nextTraceId++,
       cycle: this.cycles,
@@ -650,12 +727,15 @@ export class CPU {
       eip: this.eip,
       phase,
       microOp,
+      studentExplanation: studentExplanation || microOp,
       details,
       activeBuses: [...this.activeBuses],
+      latchAProvenance,
+      latchBProvenance,
       timestamp: Date.now(),
     };
     this.traceLog.push(record);
-    if (this.traceLog.length > 100) {
+    if (this.traceLog.length > 200) {
       this.traceLog.shift();
     }
   }
@@ -669,6 +749,9 @@ export class CPU {
       aluOut: this.aluOut,
       latchA: this.latchA,
       latchB: this.latchB,
+      latchASource: this.latchASource,
+      latchBSource: this.latchBSource,
+      latchBIsImmediate: this.latchBIsImmediate,
       registers: new Uint32Array(this.registers),
       flags: { ...this.flags },
       phase: this.phase,

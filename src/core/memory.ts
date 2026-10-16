@@ -38,6 +38,15 @@ export class Memory {
   }
 
   /**
+   * Loads initialized data bytes (e.g. from DB directives) into Data Segment (starting at 0x0800).
+   */
+  public loadData(dataBytes: Uint8Array, offset: number = DATA_START): void {
+    const start = Math.max(DATA_START, Math.min(DATA_END, offset));
+    const len = Math.min(dataBytes.length, DATA_END - start + 1);
+    this.bytes.set(dataBytes.subarray(0, len), start);
+  }
+
+  /**
    * Reads a single byte at address.
    */
   public readByte(addr: number): number {

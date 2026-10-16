@@ -93,7 +93,15 @@ export const CheatsheetModal: React.FC<CheatsheetModalProps> = ({ isOpen, onClos
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-emerald-300 font-bold min-w-[70px]">PRINT</span>
-                <span className="text-slate-300">Console print: <code className="text-slate-200">PRINT EAX</code> (prints register decimal & hex), <code className="text-slate-200">PRINT 42</code> (prints immediate) to the System Console</span>
+                <span className="text-slate-300">Educational print: <code className="text-slate-200">PRINT EAX</code> (prints register decimal & hex), <code className="text-slate-200">PRINT 42</code> (prints immediate) to Console</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-emerald-300 font-bold min-w-[70px]">INT 0x80</span>
+                <span className="text-slate-300">Authentic System Call: <code className="text-slate-200">EAX=4</code> (sys_write: EBX=fd, ECX=buf, EDX=len), <code className="text-slate-200">EAX=1</code> (sys_exit: EBX=code), <code className="text-slate-200">EAX=5</code> (sys_print_int), <code className="text-slate-200">EAX=11</code> (sys_print_char)</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-emerald-300 font-bold min-w-[70px]">DB / DW</span>
+                <span className="text-slate-300">Data Directives (stored in Data RAM at 0x0800+): <code className="text-slate-200">msg: DB "Hello\n", 0</code>, <code className="text-slate-200">nums: DB 1, 2, 3</code></span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-emerald-300 font-bold min-w-[70px]">JMP / HLT</span>

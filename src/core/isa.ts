@@ -24,6 +24,7 @@ export const OPCODES = {
   JMP: 0x13,    // JMP target
   MOVH: 0x14,   // MOVH reg, imm (Load upper 16 bits)
   PRINT: 0x15,  // PRINT reg / imm / [mem] (Print to console)
+  SYSCALL: 0x16,// INT 0x80 / SYSCALL (Software interrupt / System call)
   HLT: 0x3f,    // HLT
 } as const;
 
@@ -394,6 +395,20 @@ export function decodeInstruction(raw: number): DecodedInstruction {
           assemblyString: asm,
         };
       }
+    }
+
+    case OPCODES.SYSCALL: {
+      mnemonic = 'INT';
+      const intNum = imm16 & 0xff;
+      asm = intNum === 0x80 ? 'INT 0x80' : `INT 0x${intNum.toString(16).toUpperCase()}`;
+      return {
+        raw: u32,
+        mnemonic,
+        opcode,
+        dest: { type: 'IMM', imm: intNum, rawString: toHex16(intNum) },
+        src: { type: 'NONE', rawString: '' },
+        assemblyString: asm,
+      };
     }
 
     case OPCODES.HLT:

@@ -115,4 +115,49 @@ for (let i = 0; i < 6; i++) {
   assert(val === fibExpected[i], `Fib[${i}] == ${fibExpected[i]} (got ${val})`);
 }
 
-console.log('\nAll PulseCISC-32 Engine Verification Tests Passed Successfully! 🚀');
+console.log('--- Testing Authentic x86 System Calls (INT 0x80 & DB Strings) ---');
+const syscallProgram = `
+; Authentic Linux x86 System Calls
+MOV EAX, 4          ; sys_write
+MOV EBX, 1          ; stdout
+MOV ECX, msg        ; buffer pointer (points to 0x0800)
+MOV EDX, 14         ; length
+INT 0x80
+
+MOV EAX, 5          ; sys_print_int
+MOV EBX, 777        ; integer value
+INT 0x80
+
+MOV EAX, 1          ; sys_exit
+MOV EBX, 42         ; exit status 42
+INT 0x80
+
+msg:
+  DB "Hello, Kernel!", 10, 0
+`;
+
+const syscallAsm = Assembler.assemble(syscallProgram);
+if (syscallAsm.errors.length > 0) {
+  console.error('Syscall Assembly Errors:', syscallAsm.errors);
+  throw new Error('Syscall assembly failed');
+}
+
+assert(syscallAsm.dataBytes !== undefined && syscallAsm.dataBytes.length > 0, 'dataBytes generated from DB');
+assert(syscallAsm.labels.get('msg') === 0x0800, 'Label "msg" resolved to Data RAM address 0x0800');
+
+cpu.reset();
+cpu.memory.loadCode(syscallAsm.codeBytes);
+cpu.memory.loadData(syscallAsm.dataBytes!);
+
+maxSteps = 50;
+while (!cpu.halted && maxSteps > 0) {
+  cpu.stepInstruction();
+  maxSteps--;
+}
+
+assert(cpu.halted, 'CPU halted via sys_exit (INT 0x80, EAX=1)');
+assert(cpu.consoleOutput.some(e => e.text.includes('Hello, Kernel!')), 'Console received output from INT 0x80 sys_write');
+assert(cpu.consoleOutput.some(e => e.text.includes('777')), 'Console received output from INT 0x80 sys_print_int');
+assert(cpu.consoleOutput.some(e => e.text.includes('exited normally with status 42')), 'Console recorded sys_exit status 42');
+
+console.log('\nAll PulseCISC-32 Engine Verification Tests (including INT 0x80 and DB) Passed Successfully! 🚀');

@@ -438,6 +438,133 @@ export class CPU {
         this.phase = 'FETCH';
         break;
       }
+
+      case OPCODES.SYSCALL: {
+        const intNum = (dest.imm ?? 0) & 0xff;
+        const syscallNum = toInt32(this.readRegister(0)); // EAX
+
+        if (intNum === 0x80 || intNum === 0x21 || intNum === 0) {
+          switch (syscallNum) {
+            case 1: {
+              // sys_exit(EBX: status)
+              const status = toInt32(this.readRegister(1));
+              this.consoleOutput.push({
+                id: this.nextConsoleId++,
+                cycle: this.cycles,
+                type: 'system',
+                text: `[SYSCALL sys_exit]: Process exited normally with status ${status}.`,
+                timestamp: Date.now(),
+              });
+              this.halted = true;
+              this.phase = 'HALTED';
+              this.addTrace(
+                'EXECUTE',
+                `INT 0x80 -> sys_exit(status=${status})`,
+                'Process terminated by system call'
+              );
+              return;
+            }
+
+            case 4: {
+              // sys_write(EBX: fd, ECX: buf, EDX: count)
+              const fd = toInt32(this.readRegister(1));
+              const bufAddr = toUint32(this.readRegister(2));
+              let count = toInt32(this.readRegister(3));
+
+              // If count <= 0, read until null terminator (max 256 bytes)
+              if (count <= 0) {
+                let cur = bufAddr;
+                count = 0;
+                while (count < 256 && this.memory.readByte(cur) !== 0) {
+                  count++;
+                  cur++;
+                }
+              }
+
+              // Read bytes from memory
+              const bytes: number[] = [];
+              for (let i = 0; i < count; i++) {
+                bytes.push(this.memory.readByte(bufAddr + i));
+              }
+
+              const text = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+
+              this.consoleOutput.push({
+                id: this.nextConsoleId++,
+                cycle: this.cycles,
+                type: 'output',
+                text: fd === 2 ? `[STDERR]: ${text}` : text,
+                timestamp: Date.now(),
+              });
+
+              // sys_write returns number of bytes written in EAX
+              this.writeRegister(0, count);
+
+              this.activeBuses = ['REGS_TO_LATCHES', 'REG_TO_CONSOLE'];
+              this.addTrace(
+                'EXECUTE',
+                `INT 0x80 -> sys_write(fd=${fd}, buf=0x${bufAddr.toString(16)}, count=${count})`,
+                `Output string: "${text.replace(/\n/g, '\\n')}"`
+              );
+              break;
+            }
+
+            case 5: {
+              // sys_print_int: Print integer in EBX
+              const val = toInt32(this.readRegister(1));
+              this.consoleOutput.push({
+                id: this.nextConsoleId++,
+                cycle: this.cycles,
+                type: 'output',
+                text: `[SYSCALL]: ${val} (${toHex32(val)})`,
+                timestamp: Date.now(),
+              });
+              this.activeBuses = ['REGS_TO_LATCHES', 'REG_TO_CONSOLE'];
+              this.addTrace(
+                'EXECUTE',
+                `INT 0x80 -> sys_print_int(${val})`,
+                'Printed integer to system console'
+              );
+              break;
+            }
+
+            case 11: {
+              // sys_print_char: Print ASCII char in EBX
+              const charCode = this.readRegister(1) & 0xff;
+              const charStr = String.fromCharCode(charCode);
+              this.consoleOutput.push({
+                id: this.nextConsoleId++,
+                cycle: this.cycles,
+                type: 'output',
+                text: charStr,
+                timestamp: Date.now(),
+              });
+              this.activeBuses = ['REGS_TO_LATCHES', 'REG_TO_CONSOLE'];
+              this.addTrace(
+                'EXECUTE',
+                `INT 0x80 -> sys_print_char('${charStr}')`,
+                'Printed character to system console'
+              );
+              break;
+            }
+
+            default: {
+              this.consoleOutput.push({
+                id: this.nextConsoleId++,
+                cycle: this.cycles,
+                type: 'system',
+                text: `[SYSCALL]: Unknown syscall number EAX = ${syscallNum} (EBX = ${this.readRegister(1)})`,
+                timestamp: Date.now(),
+              });
+              break;
+            }
+          }
+        }
+
+        this.instructionCount++;
+        this.phase = 'FETCH';
+        break;
+      }
     }
   }
 

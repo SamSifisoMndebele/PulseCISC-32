@@ -2,12 +2,20 @@
 import type { AssembledProgram, AssemblyError, RegisterId } from './types';
 import { OPCODES, REGISTER_LOOKUP } from './isa';
 import type { ParsedRegisterToken } from './isa';
+import { CODE_END, DATA_START, DATA_END } from './memory';
+
+interface DataDirective {
+  type: 'DB' | 'DW' | 'DD';
+  argsStr: string;
+}
 
 interface ParsedLine {
   lineIndex: number;
   original: string;
   clean: string;
   labels: string[];
+  isDataDirective?: boolean;
+  dataDirective?: DataDirective;
   instruction: {
     mnemonic: string;
     args: string[];
@@ -22,7 +30,7 @@ interface ParsedMemoryOperand {
 
 export class Assembler {
   /**
-   * Assembles strict 2-operand x86 assembly source code into machine code bytes.
+   * Assembles strict 2-operand x86 assembly source code into machine code bytes and data bytes.
    */
   public static assemble(source: string): AssembledProgram {
     const rawLines = source.split(/\r?\n/);
@@ -33,21 +41,21 @@ export class Assembler {
     const errors: AssemblyError[] = [];
     const warnings: string[] = [];
 
-    // Preprocessing & Pass 1: Extract labels and assign instruction byte addresses
-    let currentAddress = 0x0000;
+    // Preprocessing & Pass 1: Extract labels and assign instruction / data addresses
+    let currentCodeAddress = 0x0000;
+    let currentDataAddress = DATA_START; // 0x0800
+    const pendingLabels: { name: string; lineIndex: number }[] = [];
 
     for (let i = 0; i < rawLines.length; i++) {
       const line = rawLines[i];
-      // Strip comments (;, #, //)
-      let clean = line.replace(/(;|\/\/|#).*$/, '').trim();
-
+      let clean = this.stripComments(line);
       const extractedLabels: string[] = [];
 
-      // Extract labels ending with colon
-      while (clean.includes(':')) {
-        const colonIdx = clean.indexOf(':');
-        const labelName = clean.substring(0, colonIdx).trim();
-        clean = clean.substring(colonIdx + 1).trim();
+      // Extract leading labels ending with colon (e.g. "loop:", "msg:")
+      let matchLabel: RegExpExecArray | null;
+      while ((matchLabel = /^([a-zA-Z_][a-zA-Z0-9_]*)\s*:(.*)$/.exec(clean)) !== null) {
+        const labelName = matchLabel[1].trim();
+        clean = matchLabel[2].trim();
 
         if (labelName.length > 0) {
           if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(labelName)) {
@@ -55,62 +63,104 @@ export class Assembler {
               line: i + 1,
               message: `Invalid label identifier: "${labelName}"`,
             });
-          } else if (labels.has(labelName.toLowerCase())) {
+          } else if (
+            labels.has(labelName.toLowerCase()) ||
+            pendingLabels.some((p) => p.name.toLowerCase() === labelName.toLowerCase())
+          ) {
             errors.push({
               line: i + 1,
               message: `Duplicate label definition: "${labelName}"`,
             });
           } else {
-            labels.set(labelName.toLowerCase(), currentAddress);
+            pendingLabels.push({ name: labelName, lineIndex: i });
             extractedLabels.push(labelName);
           }
         }
       }
 
-      let instruction: { mnemonic: string; args: string[] } | null = null;
-
-      if (clean.length > 0) {
-        // Split mnemonic and args
-        const firstSpace = clean.search(/\s/);
-        let mnemonic = '';
-        let argsStr = '';
-
-        if (firstSpace === -1) {
-          mnemonic = clean.toUpperCase();
-        } else {
-          mnemonic = clean.substring(0, firstSpace).toUpperCase();
-          argsStr = clean.substring(firstSpace + 1).trim();
-        }
-
-        const args: string[] = [];
-        if (argsStr.length > 0) {
-          // Parse comma separated arguments, preserving brackets [EBX + 4]
-          let currentArg = '';
-          let insideBracket = false;
-          for (let c = 0; c < argsStr.length; c++) {
-            const ch = argsStr[c];
-            if (ch === '[') insideBracket = true;
-            if (ch === ']') insideBracket = false;
-
-            if (ch === ',' && !insideBracket) {
-              args.push(currentArg.trim());
-              currentArg = '';
-            } else {
-              currentArg += ch;
-            }
-          }
-          if (currentArg.trim().length > 0) {
-            args.push(currentArg.trim());
-          }
-        }
-
-        instruction = { mnemonic, args };
-        lineAddresses.set(i, currentAddress);
-        addressToLine.set(currentAddress, i);
-
-        // Fixed 4-byte instruction size
-        currentAddress += 4;
+      // Skip section headers like "section .data", ".data", "section .text", ".text"
+      if (/^(section\s+\.(data|text)|\.(data|text))$/i.test(clean)) {
+        parsedLines.push({
+          lineIndex: i,
+          original: line,
+          clean,
+          labels: extractedLabels,
+          instruction: null,
+        });
+        continue;
       }
+
+      // Check if line is empty after labels and comments
+      if (clean.length === 0) {
+        parsedLines.push({
+          lineIndex: i,
+          original: line,
+          clean,
+          labels: extractedLabels,
+          instruction: null,
+        });
+        continue;
+      }
+
+      // Check for Data Directives (DB, DW, DD, BYTE, WORD)
+      const dataMatch = clean.match(/^(DB|DW|DD|BYTE|WORD)\s*(.*)$/i);
+      if (dataMatch) {
+        let dirType = dataMatch[1].toUpperCase() as 'DB' | 'DW' | 'DD';
+        if (dirType === ('BYTE' as string)) dirType = 'DB';
+        if (dirType === ('WORD' as string)) dirType = 'DW';
+        const argsStr = dataMatch[2].trim();
+
+        // Assign all pending labels to this data address
+        for (const p of pendingLabels) {
+          labels.set(p.name.toLowerCase(), currentDataAddress);
+        }
+        pendingLabels.length = 0;
+
+        lineAddresses.set(i, currentDataAddress);
+        addressToLine.set(currentDataAddress, i);
+
+        // Calculate byte count for this directive
+        const byteCount = this.calculateDirectiveByteCount(dirType, argsStr, i + 1);
+        currentDataAddress += byteCount;
+
+        parsedLines.push({
+          lineIndex: i,
+          original: line,
+          clean,
+          labels: extractedLabels,
+          isDataDirective: true,
+          dataDirective: { type: dirType, argsStr },
+          instruction: null,
+        });
+        continue;
+      }
+
+      // Line is an executable instruction: assign all pending labels to current code address
+      for (const p of pendingLabels) {
+        labels.set(p.name.toLowerCase(), currentCodeAddress);
+      }
+      pendingLabels.length = 0;
+
+      // Split mnemonic and args
+      const firstSpace = clean.search(/\s/);
+      let mnemonic = '';
+      let argsStr = '';
+
+      if (firstSpace === -1) {
+        mnemonic = clean.toUpperCase();
+      } else {
+        mnemonic = clean.substring(0, firstSpace).toUpperCase();
+        argsStr = clean.substring(firstSpace + 1).trim();
+      }
+
+      const args = this.splitArgs(argsStr);
+
+      const instruction = { mnemonic, args };
+      lineAddresses.set(i, currentCodeAddress);
+      addressToLine.set(currentCodeAddress, i);
+
+      // Fixed 4-byte instruction size
+      currentCodeAddress += 4;
 
       parsedLines.push({
         lineIndex: i,
@@ -121,48 +171,89 @@ export class Assembler {
       });
     }
 
-    if (currentAddress > 0x0800) {
+    // Assign any trailing pending labels to current code address
+    for (const p of pendingLabels) {
+      labels.set(p.name.toLowerCase(), currentCodeAddress);
+    }
+    pendingLabels.length = 0;
+
+    if (currentCodeAddress > CODE_END + 1) {
       errors.push({
         line: 1,
-        message: `Program size (${currentAddress} bytes) exceeds Code Segment capacity (2048 bytes).`,
+        message: `Program code size (${currentCodeAddress} bytes) exceeds Code Segment capacity (2048 bytes).`,
       });
     }
 
-    // Pass 2: Encode instructions into 32-bit machine code words
+    if (currentDataAddress > DATA_END + 1) {
+      errors.push({
+        line: 1,
+        message: `Program data size (${currentDataAddress - DATA_START} bytes) exceeds Data Segment capacity (2048 bytes).`,
+      });
+    }
+
+    // Pass 2: Encode instructions into machine code and data into dataBytes
     const codeBytes = new Uint8Array(2048);
-    let bytePointer = 0;
+    const dataBytes = new Uint8Array(2048);
+    let codePointer = 0;
+    let dataPointer = 0;
 
     for (const parsed of parsedLines) {
-      if (!parsed.instruction) continue;
-
-      const { mnemonic, args } = parsed.instruction;
       const lineNum = parsed.lineIndex + 1;
-      const pc = bytePointer;
 
-      try {
-        const encodedWord = this.encodeInstruction(
-          mnemonic,
-          args,
-          pc,
-          labels,
-          lineNum
-        );
-        // Write Little-Endian 32-bit word
-        codeBytes[bytePointer] = encodedWord & 0xff;
-        codeBytes[bytePointer + 1] = (encodedWord >>> 8) & 0xff;
-        codeBytes[bytePointer + 2] = (encodedWord >>> 16) & 0xff;
-        codeBytes[bytePointer + 3] = (encodedWord >>> 24) & 0xff;
-        bytePointer += 4;
-      } catch (err: unknown) {
-        errors.push({
-          line: lineNum,
-          message: err instanceof Error ? err.message : String(err),
-        });
+      // Handle Data Directive in Pass 2
+      if (parsed.isDataDirective && parsed.dataDirective) {
+        try {
+          const bytes = this.encodeDataDirective(
+            parsed.dataDirective.type,
+            parsed.dataDirective.argsStr,
+            labels,
+            lineNum
+          );
+          for (const b of bytes) {
+            if (dataPointer < dataBytes.length) {
+              dataBytes[dataPointer++] = b & 0xff;
+            }
+          }
+        } catch (err: unknown) {
+          errors.push({
+            line: lineNum,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+        continue;
+      }
+
+      // Handle Instruction in Pass 2
+      if (parsed.instruction) {
+        const { mnemonic, args } = parsed.instruction;
+        const pc = codePointer;
+
+        try {
+          const encodedWord = this.encodeInstruction(
+            mnemonic,
+            args,
+            pc,
+            labels,
+            lineNum
+          );
+          // Write Little-Endian 32-bit word
+          codeBytes[codePointer] = encodedWord & 0xff;
+          codeBytes[codePointer + 1] = (encodedWord >>> 8) & 0xff;
+          codeBytes[codePointer + 2] = (encodedWord >>> 16) & 0xff;
+          codeBytes[codePointer + 3] = (encodedWord >>> 24) & 0xff;
+          codePointer += 4;
+        } catch (err: unknown) {
+          errors.push({
+            line: lineNum,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
       }
     }
 
     return {
-      codeBytes: codeBytes.subarray(0, bytePointer),
+      codeBytes: codeBytes.subarray(0, codePointer),
+      dataBytes: dataBytes.subarray(0, dataPointer),
       sourceLines: rawLines,
       lineAddresses,
       addressToLine,
@@ -170,6 +261,144 @@ export class Assembler {
       errors,
       warnings,
     };
+  }
+
+  private static stripComments(line: string): string {
+    let inDouble = false;
+    let inSingle = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"' && !inSingle && (i === 0 || line[i - 1] !== '\\')) {
+        inDouble = !inDouble;
+      } else if (ch === "'" && !inDouble && (i === 0 || line[i - 1] !== '\\')) {
+        inSingle = !inSingle;
+      } else if (!inDouble && !inSingle) {
+        if (ch === ';' || ch === '#') {
+          return line.substring(0, i).trim();
+        }
+        if (ch === '/' && i + 1 < line.length && line[i + 1] === '/') {
+          return line.substring(0, i).trim();
+        }
+      }
+    }
+    return line.trim();
+  }
+
+  private static splitArgs(argsStr: string): string[] {
+    const args: string[] = [];
+    if (!argsStr) return args;
+
+    let currentArg = '';
+    let insideBracket = false;
+    let inDouble = false;
+    let inSingle = false;
+
+    for (let c = 0; c < argsStr.length; c++) {
+      const ch = argsStr[c];
+      if (ch === '"' && !inSingle && (c === 0 || argsStr[c - 1] !== '\\')) inDouble = !inDouble;
+      if (ch === "'" && !inDouble && (c === 0 || argsStr[c - 1] !== '\\')) inSingle = !inSingle;
+      if (ch === '[' && !inDouble && !inSingle) insideBracket = true;
+      if (ch === ']' && !inDouble && !inSingle) insideBracket = false;
+
+      if (ch === ',' && !insideBracket && !inDouble && !inSingle) {
+        args.push(currentArg.trim());
+        currentArg = '';
+      } else {
+        currentArg += ch;
+      }
+    }
+    if (currentArg.trim().length > 0) {
+      args.push(currentArg.trim());
+    }
+    return args;
+  }
+
+  private static calculateDirectiveByteCount(
+    type: 'DB' | 'DW' | 'DD',
+    argsStr: string,
+    lineNum: number
+  ): number {
+    try {
+      const bytes = this.encodeDataDirective(type, argsStr, undefined, lineNum);
+      return bytes.length;
+    } catch {
+      return 1;
+    }
+  }
+
+  private static encodeDataDirective(
+    type: 'DB' | 'DW' | 'DD',
+    argsStr: string,
+    labels?: Map<string, number>,
+    lineNum: number = 1
+  ): number[] {
+    const bytes: number[] = [];
+    const tokens = this.splitArgs(argsStr);
+
+    for (const token of tokens) {
+      const trimmed = token.trim();
+      if (!trimmed) continue;
+
+      // String literal in double or single quotes
+      if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length >= 2) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'") && trimmed.length >= 2)
+      ) {
+        const raw = trimmed.substring(1, trimmed.length - 1);
+        let i = 0;
+        while (i < raw.length) {
+          if (raw[i] === '\\' && i + 1 < raw.length) {
+            i++;
+            const esc = raw[i];
+            let val = 0;
+            switch (esc) {
+              case 'n': val = 10; break;
+              case 'r': val = 13; break;
+              case 't': val = 9; break;
+              case '0': val = 0; break;
+              case '\\': val = 92; break;
+              case '"': val = 34; break;
+              case "'": val = 39; break;
+              default: val = esc.charCodeAt(0); break;
+            }
+            this.pushBytes(bytes, type, val);
+          } else {
+            this.pushBytes(bytes, type, raw.charCodeAt(i));
+          }
+          i++;
+        }
+      } else {
+        // Numeric value, character literal, or label
+        let val = 0;
+        try {
+          val = this.parseImmediate(trimmed, lineNum, labels);
+        } catch (e) {
+          if (!labels) {
+            // In Pass 1, unknown label can be assumed 0 for size calculation
+            val = 0;
+          } else {
+            throw e;
+          }
+        }
+        this.pushBytes(bytes, type, val);
+      }
+    }
+
+    return bytes;
+  }
+
+  private static pushBytes(bytes: number[], type: 'DB' | 'DW' | 'DD', val: number): void {
+    if (type === 'DB') {
+      bytes.push(val & 0xff);
+    } else if (type === 'DW') {
+      bytes.push(val & 0xff);
+      bytes.push((val >>> 8) & 0xff);
+    } else if (type === 'DD') {
+      bytes.push(val & 0xff);
+      bytes.push((val >>> 8) & 0xff);
+      bytes.push((val >>> 16) & 0xff);
+      bytes.push((val >>> 24) & 0xff);
+    }
   }
 
   private static parseRegister(regStr: string, lineNum: number): ParsedRegisterToken {
@@ -185,14 +414,36 @@ export class Assembler {
     if (labels && labels.has(clean.toLowerCase())) {
       return labels.get(clean.toLowerCase())!;
     }
+
+    // Single character literal, e.g. 'A' or '\n'
+    if (clean.startsWith("'") && clean.endsWith("'") && clean.length >= 3) {
+      const inner = clean.substring(1, clean.length - 1);
+      if (inner.startsWith('\\') && inner.length >= 2) {
+        switch (inner[1]) {
+          case 'n': return 10;
+          case 'r': return 13;
+          case 't': return 9;
+          case '0': return 0;
+          case '\\': return 92;
+          case "'": return 39;
+          default: return inner.charCodeAt(1);
+        }
+      }
+      return inner.charCodeAt(0);
+    }
+
     let val: number;
-    if (clean.startsWith('0x') || clean.startsWith('0X')) {
+    // Hex ending in 'h' or 'H' (e.g. 80h, 0ffh)
+    if (/^[0-9][0-9a-fA-F]*h$/i.test(clean)) {
+      val = parseInt(clean.substring(0, clean.length - 1), 16);
+    } else if (clean.startsWith('0x') || clean.startsWith('0X')) {
       val = parseInt(clean, 16);
     } else if (clean.startsWith('0b') || clean.startsWith('0B')) {
       val = parseInt(clean.substring(2), 2);
     } else {
       val = parseInt(clean, 10);
     }
+
     if (isNaN(val)) {
       throw new Error(`Line ${lineNum}: Invalid number/label '${immStr}'`);
     }
@@ -204,25 +455,42 @@ export class Assembler {
     return s.startsWith('[') && s.endsWith(']');
   }
 
-  private static parseMemoryOperand(memStr: string, lineNum: number): ParsedMemoryOperand {
+  private static parseMemoryOperand(
+    memStr: string,
+    lineNum: number,
+    labels?: Map<string, number>
+  ): ParsedMemoryOperand {
     const s = memStr.trim();
     if (!s.startsWith('[') || !s.endsWith(']')) {
-      throw new Error(`Line ${lineNum}: Expected memory operand enclosed in brackets like '[EBX]' or '[EBX + 4]'`);
+      throw new Error(
+        `Line ${lineNum}: Expected memory operand enclosed in brackets like '[EBX]' or '[EBX + 4]'`
+      );
     }
     const inner = s.substring(1, s.length - 1).trim();
 
-    // Direct address, e.g. [0x0800]
-    if (/^(0x[0-9a-fA-F]+|[0-9]+)$/.test(inner)) {
-      const addr = this.parseImmediate(inner, lineNum);
+    // Direct address or label, e.g. [0x0800] or [msg]
+    if (labels && labels.has(inner.toLowerCase())) {
+      const addr = labels.get(inner.toLowerCase())!;
+      return { baseReg: 0, offset: addr, isDirect: true };
+    }
+    if (/^(0x[0-9a-fA-F]+|[0-9]+[hH]?|[0-9]+)$/.test(inner)) {
+      const addr = this.parseImmediate(inner, lineNum, labels);
       return { baseReg: 0, offset: addr, isDirect: true };
     }
 
-    // [reg + offset] or [reg - offset]
-    const match = inner.match(/^([a-zA-Z]{2,3})\s*([\+\-])\s*(.+)$/);
+    // [reg + offset] or [reg - offset] or [label + offset]
+    const match = inner.match(/^([a-zA-Z0-9_]+)\s*([\+\-])\s*(.+)$/);
     if (match) {
-      const regToken = this.parseRegister(match[1], lineNum);
+      const baseStr = match[1];
       const sign = match[2] === '-' ? -1 : 1;
-      const offsetVal = this.parseImmediate(match[3], lineNum);
+      const offsetVal = this.parseImmediate(match[3], lineNum, labels);
+
+      if (labels && labels.has(baseStr.toLowerCase())) {
+        const baseAddr = labels.get(baseStr.toLowerCase())!;
+        return { baseReg: 0, offset: baseAddr + sign * offsetVal, isDirect: true };
+      }
+
+      const regToken = this.parseRegister(baseStr, lineNum);
       return { baseReg: regToken.id, offset: sign * offsetVal, isDirect: false };
     }
 
@@ -262,6 +530,16 @@ export class Assembler {
         }
       }
 
+      case 'INT': {
+        if (args.length !== 1) throw new Error(`Line ${lineNum}: INT requires 1 operand (e.g. INT 0x80)`);
+        const intNum = this.parseImmediate(args[0], lineNum, labels);
+        return this.pack(OPCODES.SYSCALL, 0, 0, false, false, intNum & 0xff);
+      }
+
+      case 'SYSCALL': {
+        return this.pack(OPCODES.SYSCALL, 0, 0, false, false, 0x80);
+      }
+
       case 'JMP': {
         if (args.length !== 1) throw new Error(`Line ${lineNum}: JMP requires 1 target: JMP label/address`);
         const target = this.parseImmediate(args[0], lineNum, labels);
@@ -289,7 +567,7 @@ export class Assembler {
 
         // Case 1: MOV [mem], reg (Store)
         if (this.isMemoryOperand(destStr)) {
-          const mem = this.parseMemoryOperand(destStr, lineNum);
+          const mem = this.parseMemoryOperand(destStr, lineNum, labels);
           const srcReg = this.parseRegister(srcStr, lineNum);
           return this.pack(
             OPCODES.MOV_MR,
@@ -306,7 +584,7 @@ export class Assembler {
 
         // Subcase 2a: MOV reg, [mem] (Load)
         if (this.isMemoryOperand(srcStr)) {
-          const mem = this.parseMemoryOperand(srcStr, lineNum);
+          const mem = this.parseMemoryOperand(srcStr, lineNum, labels);
           return this.pack(
             OPCODES.MOV_RM,
             destReg.id,

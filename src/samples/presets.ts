@@ -213,4 +213,36 @@ MOV [0x0808], ECX
 HLT
 `,
   },
+  {
+    id: 'syscalls_db',
+    name: '9. Authentic x86: System Calls (INT 0x80 & DB)',
+    description: 'Real OS interface: uses INT 0x80 (sys_write and sys_exit) with DB string storage in Data RAM.',
+    code: `; PulseCISC-32: Authentic Linux x86 System Calls
+; Real processors do not have a PRINT instruction.
+; Instead, output is done via kernel system calls (INT 0x80):
+;   EAX = 4 : sys_write (EBX=fd, ECX=buffer_ptr, EDX=byte_count)
+;   EAX = 1 : sys_exit  (EBX=exit_code)
+
+; --- 1. sys_write: Print greeting string to stdout ---
+MOV EAX, 4          ; System call number 4: sys_write
+MOV EBX, 1          ; File descriptor 1: stdout (standard terminal)
+MOV ECX, msg        ; Memory pointer to string in Data RAM (0x0800)
+MOV EDX, 22         ; String byte length
+INT 0x80            ; Trigger kernel interrupt!
+
+; --- 2. sys_print_int: Print a calculated integer ---
+MOV EAX, 5          ; Syscall 5: sys_print_int
+MOV EBX, 2026       ; Value to print
+INT 0x80
+
+; --- 3. sys_exit: Terminate program cleanly ---
+MOV EAX, 1          ; System call number 1: sys_exit
+MOV EBX, 0          ; Return status code 0 (success)
+INT 0x80            ; Process exits cleanly!
+
+; --- Data Segment (Loaded into RAM at 0x0800) ---
+msg:
+  DB "Hello from INT 0x80!\n", 0
+`,
+  },
 ];

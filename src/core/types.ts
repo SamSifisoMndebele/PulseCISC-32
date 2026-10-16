@@ -14,7 +14,9 @@ export type Mnemonic =
   | 'JNE'
   | 'JMP'
   | 'HLT'
-  | 'PRINT';
+  | 'PRINT'
+  | 'INT'
+  | 'SYSCALL';
 
 export type RegisterId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
@@ -133,6 +135,7 @@ export interface CPUMicroState {
 
 export interface AssembledProgram {
   codeBytes: Uint8Array;
+  dataBytes?: Uint8Array;
   sourceLines: string[];
   lineAddresses: Map<number, number>; // source line (0-indexed) -> byte address
   addressToLine: Map<number, number>; // byte address -> source line (0-indexed)

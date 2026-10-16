@@ -195,6 +195,15 @@ export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
                   >
                     {toHex32(wordVal)}
                   </span>
+                  <span
+                    className="text-[10px] text-emerald-400/80 font-mono tracking-wider border border-slate-800/80 px-1 py-0.2 rounded bg-slate-950/70 select-all"
+                    title="ASCII Representation (4 bytes Little-Endian)"
+                  >
+                    |{[0, 1, 2, 3].map((off) => {
+                      const b = memory.readByte(addr + off);
+                      return b >= 32 && b <= 126 ? String.fromCharCode(b) : '.';
+                    }).join('')}|
+                  </span>
                   {isPaused && (
                     <button
                       onClick={() => handleStartEdit(addr)}

@@ -30,6 +30,9 @@ export function App() {
   const [cpuState, setCpuState] = useState<CPUMicroState>(() => {
     const initAsm = Assembler.assemble(PRESETS[0].code);
     cpu.memory.loadCode(initAsm.codeBytes);
+    if (initAsm.dataBytes && initAsm.dataBytes.length > 0) {
+      cpu.memory.loadData(initAsm.dataBytes);
+    }
     return cpu.getSnapshot();
   });
 
@@ -46,7 +49,7 @@ export function App() {
   // Compute active source line from current EIP
   const activeLineIndex = assembled.addressToLine.get(cpuState.eip & ~0x3) ?? null;
 
-  // Assemble and load program into Code Segment
+  // Assemble and load program into Code Segment & Data Segment
   const handleAssemble = useCallback(() => {
     setIsRunning(false);
     const result = Assembler.assemble(code);
@@ -55,6 +58,9 @@ export function App() {
     if (result.errors.length === 0) {
       cpu.reset();
       cpu.memory.loadCode(result.codeBytes);
+      if (result.dataBytes && result.dataBytes.length > 0) {
+        cpu.memory.loadData(result.dataBytes);
+      }
       setCpuState(cpu.getSnapshot());
     }
   }, [code, cpu]);
@@ -72,6 +78,9 @@ export function App() {
 
     cpu.reset();
     cpu.memory.loadCode(result.codeBytes);
+    if (result.dataBytes && result.dataBytes.length > 0) {
+      cpu.memory.loadData(result.dataBytes);
+    }
     setCpuState(cpu.getSnapshot());
   };
 
@@ -94,6 +103,9 @@ export function App() {
     setIsRunning(false);
     cpu.reset();
     cpu.memory.loadCode(assembled.codeBytes);
+    if (assembled.dataBytes && assembled.dataBytes.length > 0) {
+      cpu.memory.loadData(assembled.dataBytes);
+    }
     setCpuState(cpu.getSnapshot());
   }, [cpu, assembled]);
 

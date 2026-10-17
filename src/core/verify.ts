@@ -159,4 +159,33 @@ assert(cpu.consoleOutput.some(e => e.text.includes('Hello, Kernel!')), 'Console 
 assert(cpu.consoleOutput.some(e => e.text.includes('777')), 'Console received output from INT 0x80 sys_print_int');
 assert(cpu.consoleOutput.some(e => e.text.includes('exited normally with status 42')), 'Console recorded sys_exit status 42');
 
-console.log('\nAll PulseCISC-32 Engine Verification Tests (including INT 0x80 and DB) Passed Successfully! 🚀');
+console.log('--- Testing Direct Memory Store and Load (MOV [0x2000], reg) ---');
+const directMemProgram = `
+MOV EAX, 0x12345678
+MOV EBX, 0x0078
+MOV ECX, 0x0F78
+MOV [0x2000], EAX     ; Direct memory store
+MOV [0x2004], EBX
+MOV [0x2008], ECX
+MOV EDX, [0x2000]     ; Direct memory load
+HLT
+`;
+const directMemAsm = Assembler.assemble(directMemProgram);
+if (directMemAsm.errors.length > 0) {
+  console.error('Direct Mem Errors:', directMemAsm.errors);
+  throw new Error('Direct mem assembly failed');
+}
+cpu.reset();
+cpu.memory.loadCode(directMemAsm.codeBytes);
+maxSteps = 50;
+while (!cpu.halted && maxSteps > 0) {
+  cpu.stepInstruction();
+  maxSteps--;
+}
+assert(cpu.halted, 'Direct mem program halted');
+assert(cpu.memory.readWord(0x2000) === 0x12345678, 'Direct store MOV [0x2000], EAX stored 0x12345678 at 0x2000');
+assert(cpu.memory.readWord(0x2004) === 0x0078, 'Direct store MOV [0x2004], EBX stored 0x0078 at 0x2004');
+assert(cpu.memory.readWord(0x2008) === 0x0F78, 'Direct store MOV [0x2008], ECX stored 0x0F78 at 0x2008');
+assert(cpu.readRegister(3) === 0x12345678, 'Direct load MOV EDX, [0x2000] loaded 0x12345678 into EDX');
+
+console.log('\nAll PulseCISC-32 Engine Verification Tests (including INT 0x80, DB, and Direct Memory Addressing) Passed Successfully! 🚀');

@@ -47,17 +47,17 @@ HLT                 ; Execution finished
   {
     id: 'ram_basics',
     name: '3. Beginner: RAM Store & Load (Memory)',
-    description: 'Demonstrates storing a value into Data RAM at 0x0800 and loading it back into another register.',
+    description: 'Demonstrates storing a value into Data RAM at 0x2000 and loading it back into another register.',
     code: `; PulseCISC-32: Introductory Lesson 3
-; Learn how the CPU interacts with 4 KB RAM
+; Learn how the CPU interacts with 64 KB RAM (Data Segment starts at 0x2000)
 
 MOV EAX, 42         ; Put the answer (42) into EAX
-MOV EBX, 0x0800     ; Set EBX to point to Data RAM address 0x0800
+MOV EBX, 0x2000     ; Set EBX to point to Data RAM address 0x2000
 
-MOV [EBX], EAX      ; Store word: RAM[0x0800] = 42
+MOV [EBX], EAX      ; Store word: RAM[0x2000] = 42
 ; Watch the purple Memory phase animate into Data RAM!
 
-MOV ECX, [EBX]      ; Load word: ECX = RAM[0x0800]
+MOV ECX, [EBX]      ; Load word: ECX = RAM[0x2000]
 PRINT ECX           ; Output loaded value (42) to Console!
 
 HLT                 ; Done
@@ -87,14 +87,14 @@ HLT
   {
     id: 'fibonacci',
     name: '5. Intermediate: Fibonacci Sequence',
-    description: 'Computes first 8 Fibonacci numbers and writes them consecutively into Data RAM at 0x0800.',
+    description: 'Computes first 8 Fibonacci numbers and writes them consecutively into Data RAM at 0x2000.',
     code: `; PulseCISC-32: Fibonacci Sequence Generator
-; Computes first 8 Fibonacci numbers into Data RAM at 0x0800
+; Computes first 8 Fibonacci numbers into Data RAM at 0x2000
 
 MOV EAX, 0          ; Fib(0) = 0
 MOV EBX, 1          ; Fib(1) = 1
 MOV ECX, 8          ; Total numbers to generate
-MOV ESI, 0x0800     ; Data RAM pointer
+MOV ESI, 0x2000     ; Data RAM pointer (0x2000)
 
 fib_loop:
   PRINT EAX         ; Print each Fibonacci number to Console
@@ -120,7 +120,7 @@ HLT                 ; Execution finished!
 
 MOV EAX, 1          ; Accumulator result = 1
 MOV EBX, 5          ; N = 5
-MOV EDX, 0x0800     ; Result memory address
+MOV EDX, 0x2000     ; Result memory address (0x2000)
 
 fact_loop:
   CMP EBX, 1        ; Check if N <= 1
@@ -141,7 +141,7 @@ mult_loop:
   JMP fact_loop     ; Next factorial iteration
 
 fact_done:
-  MOV [EDX], EAX    ; Store final factorial (120) in RAM[0x0800]
+  MOV [EDX], EAX    ; Store final factorial (120) in RAM[0x2000]
   PRINT EAX         ; Output final factorial result to Console!
   HLT
 `,
@@ -149,12 +149,12 @@ fact_done:
   {
     id: 'arraySum',
     name: '7. Intermediate: Array Summation',
-    description: 'Initializes an array in Data RAM, computes the sum in EAX, and stores the total at 0x0820.',
+    description: 'Initializes an array in Data RAM at 0x2000, computes the sum in EAX, and stores the total at 0x2020.',
     code: `; PulseCISC-32: Array Summation
-; Writes [10, 20, 30, 40] into RAM, then sums them
+; Writes [10, 20, 30, 40] into RAM at 0x2000, then sums them
 
-; Step 1: Initialize array at 0x0800
-MOV ESI, 0x0800
+; Step 1: Initialize array at 0x2000
+MOV ESI, 0x2000
 MOV EAX, 10
 MOV [ESI], EAX
 MOV EAX, 20
@@ -167,7 +167,7 @@ MOV [ESI + 12], EAX
 ; Step 2: Sum the array
 MOV EAX, 0          ; Sum accumulator = 0
 MOV ECX, 4          ; Count = 4
-MOV ESI, 0x0800     ; Reset pointer
+MOV ESI, 0x2000     ; Reset pointer
 
 sum_loop:
   MOV EBX, [ESI]    ; Load word from array
@@ -177,8 +177,8 @@ sum_loop:
   CMP ECX, 0
   JNE sum_loop
 
-; Store result sum (100 = 0x64) at 0x0820
-MOV [0x0820], EAX
+; Store result sum (100 = 0x64) at 0x2020
+MOV [0x2020], EAX
 PRINT EAX           ; Print sum to Console!
 HLT
 `,
@@ -207,17 +207,17 @@ MOV ECX, 0x0F00     ; Bitmask to set
 OR  ECX, EBX        ; ECX = 0x0F78
 PRINT ECX
 
-; 4. Store results to Data RAM
-MOV [0x0800], EAX
-MOV [0x0804], EBX
-MOV [0x0808], ECX
+; 4. Store results to Data RAM at 0x2000
+MOV [0x2000], EAX
+MOV [0x2004], EBX
+MOV [0x2008], ECX
 HLT
 `,
   },
   {
     id: 'syscalls_db',
     name: '9. Authentic x86: System Calls (INT 0x80 & DB)',
-    description: 'Real OS interface: uses INT 0x80 (sys_write and sys_exit) with DB string storage in Data RAM.',
+    description: 'Real OS interface: uses INT 0x80 (sys_write and sys_exit) with DB string storage in Data RAM (0x2000).',
     code: `; PulseCISC-32: Authentic Linux x86 System Calls
 ; Real processors do not have a PRINT instruction.
 ; Instead, output is done via kernel system calls (INT 0x80):
@@ -227,7 +227,7 @@ HLT
 ; --- 1. sys_write: Print greeting string to stdout ---
 MOV EAX, 4          ; System call number 4: sys_write
 MOV EBX, 1          ; File descriptor 1: stdout (standard terminal)
-MOV ECX, msg        ; Memory pointer to string in Data RAM (0x0800)
+MOV ECX, msg        ; Memory pointer to string in Data RAM (0x2000)
 MOV EDX, 22         ; String byte length
 INT 0x80            ; Trigger kernel interrupt!
 
@@ -241,7 +241,7 @@ MOV EAX, 1          ; System call number 1: sys_exit
 MOV EBX, 0          ; Return status code 0 (success)
 INT 0x80            ; Process exits cleanly!
 
-; --- Data Segment (Loaded into RAM at 0x0800) ---
+; --- Data Segment (Loaded into RAM at 0x2000) ---
 msg: DB "Hello from INT 0x80!\n", 0
 `,
   },

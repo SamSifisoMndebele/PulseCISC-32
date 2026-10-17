@@ -1461,10 +1461,11 @@ export class DatapathRenderer {
     const memKb = Math.round((state.memorySize ?? 65536) / 1024);
     this.drawCard(ctx, box, `Data RAM (${memKb} KB)`, isMem, activeColor, pulse);
 
-    const baseDataAddr = state.dataStart ?? 0x0800;
+    const baseDataAddr = state.dataStart ?? 0x2000;
     for (let i = 0; i < 4; i++) {
       const addr = baseDataAddr + i * 4;
-      const val = state.mar === addr && isMem ? state.mdr : 0;
+      const previewVal = state.ramPreview?.[i] ?? 0;
+      const val = state.mar === addr && isMem ? state.mdr : previewVal;
       const y = box.y + 30 + i * 30;
 
       const isTarget = state.mar === addr && isMem;

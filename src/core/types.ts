@@ -55,6 +55,7 @@ export interface Operand {
   imm?: number;
   memBaseReg?: RegisterId;
   memOffset?: number;
+  isDirect?: boolean;
   label?: string;
   stringPayload?: string;
   rawString: string;
@@ -149,6 +150,7 @@ export interface CPUMicroState {
   memorySize?: number;
   dataStart?: number;
   dataEnd?: number;
+  ramPreview?: number[];
 }
 
 export interface AssembledProgram {

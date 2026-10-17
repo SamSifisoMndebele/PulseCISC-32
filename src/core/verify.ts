@@ -19,8 +19,8 @@ MOV EBX, 25
 ADD EAX, EBX       ; EAX = 35
 SUB EBX, 10        ; EBX = 15
 XOR ECX, ECX       ; ECX = 0 (ZF should be 1)
-MOV EDX, 0x0800    ; memory address pointer
-MOV [EDX], EAX     ; Store 35 at RAM[0x0800]
+MOV EDX, 0x2000    ; memory address pointer
+MOV [EDX], EAX     ; Store 35 at RAM[0x2000]
 MOV ESI, [EDX]     ; Load 35 into ESI
 PRINT EAX          ; Print EAX result to console
 PRINT 100          ; Print immediate to console
@@ -47,7 +47,7 @@ assert(cpu.halted, 'CPU halted cleanly on HLT');
 assert(cpu.readRegister(0) === 35, 'EAX == 35 (ADD)');
 assert(cpu.readRegister(1) === 15, 'EBX == 15 (SUB)');
 assert(cpu.readRegister(2) === 0, 'ECX == 0 (XOR ECX, ECX)');
-assert(cpu.memory.readWord(0x0800) === 35, 'Data RAM[0x0800] == 35 (MOV [EDX], EAX)');
+assert(cpu.memory.readWord(0x2000) === 35, 'Data RAM[0x2000] == 35 (MOV [EDX], EAX)');
 assert(cpu.readRegister(4) === 35, 'ESI == 35 (MOV ESI, [EDX])');
 assert(cpu.consoleOutput.length >= 3, 'Console received system reset + PRINT outputs');
 assert(cpu.consoleOutput.some(e => e.text.includes('EAX = 35')), 'Console printed EAX = 35');
@@ -77,7 +77,7 @@ const fibProgram = `
 MOV EAX, 0          ; a = 0
 MOV EBX, 1          ; b = 1
 MOV ECX, 6          ; count = 6
-MOV ESI, 0x0800     ; memory pointer
+MOV ESI, 0x2000     ; memory pointer
 
 loop:
   MOV [ESI], EAX    ; RAM[ESI] = EAX
@@ -111,7 +111,7 @@ while (!cpu.halted && maxSteps > 0) {
 assert(cpu.halted, 'Fibonacci program completed and halted');
 const fibExpected = [0, 1, 1, 2, 3, 5];
 for (let i = 0; i < 6; i++) {
-  const val = cpu.memory.readWord(0x0800 + i * 4);
+  const val = cpu.memory.readWord(0x2000 + i * 4);
   assert(val === fibExpected[i], `Fib[${i}] == ${fibExpected[i]} (got ${val})`);
 }
 
@@ -120,7 +120,7 @@ const syscallProgram = `
 ; Authentic Linux x86 System Calls
 MOV EAX, 4          ; sys_write
 MOV EBX, 1          ; stdout
-MOV ECX, msg        ; buffer pointer (points to 0x0800)
+MOV ECX, msg        ; buffer pointer (points to 0x2000)
 MOV EDX, 14         ; length
 INT 0x80
 
@@ -132,8 +132,7 @@ MOV EAX, 1          ; sys_exit
 MOV EBX, 42         ; exit status 42
 INT 0x80
 
-msg:
-  DB "Hello, Kernel!", 10, 0
+msg: DB "Hello, Kernel!", 10, 0
 `;
 
 const syscallAsm = Assembler.assemble(syscallProgram);
@@ -143,7 +142,7 @@ if (syscallAsm.errors.length > 0) {
 }
 
 assert(syscallAsm.dataBytes !== undefined && syscallAsm.dataBytes.length > 0, 'dataBytes generated from DB');
-assert(syscallAsm.labels.get('msg') === 0x0800, 'Label "msg" resolved to Data RAM address 0x0800');
+assert(syscallAsm.labels.get('msg') === 0x2000, 'Label "msg" resolved to Data RAM address 0x2000');
 
 cpu.reset();
 cpu.memory.loadCode(syscallAsm.codeBytes);

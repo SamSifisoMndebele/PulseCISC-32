@@ -586,7 +586,8 @@ export class Assembler {
             srcReg.id,
             false,
             srcReg.is16Bit,
-            mem.offset
+            mem.offset,
+            mem.isDirect
           );
         }
 
@@ -602,7 +603,8 @@ export class Assembler {
             mem.baseReg,
             destReg.is16Bit,
             false,
-            mem.offset
+            mem.offset,
+            mem.isDirect
           );
         }
 
@@ -696,7 +698,8 @@ export class Assembler {
     srcReg: number,
     destIs16: boolean,
     srcIs16: boolean,
-    imm16: number
+    imm16: number,
+    isDirectMem: boolean = false
   ): number {
     const immClamped = imm16 & 0xffff;
     return (
@@ -705,6 +708,7 @@ export class Assembler {
         ((srcReg & 0x07) << 20) |
         ((destIs16 ? 1 : 0) << 19) |
         ((srcIs16 ? 1 : 0) << 18) |
+        ((isDirectMem ? 1 : 0) << 17) |
         immClamped) >>>
       0
     );

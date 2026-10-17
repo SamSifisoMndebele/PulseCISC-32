@@ -107,7 +107,9 @@ export function decodeInstruction(raw: number): DecodedInstruction {
   const srcRegId = ((u32 >>> 20) & 0x07) as RegisterId;
   const destIs16 = ((u32 >>> 19) & 0x01) === 1;
   const srcIs16 = ((u32 >>> 18) & 0x01) === 1;
-  const imm16 = signExtend16(u32 & 0xffff);
+  const isDirectMem = ((u32 >>> 17) & 0x01) === 1;
+  const rawImm16 = u32 & 0xffff;
+  const imm16 = signExtend16(rawImm16);
   const jumpTarget = (u32 & 0x03ffffff) << 2;
 
   const destRegName = destIs16 ? SUB_REGISTER_NAMES[destRegId] : REGISTER_NAMES[destRegId];
@@ -144,7 +146,10 @@ export function decodeInstruction(raw: number): DecodedInstruction {
     case OPCODES.MOV_RM: {
       mnemonic = 'MOV';
       const offsetStr = imm16 !== 0 ? (imm16 > 0 ? ` + ${imm16}` : ` - ${Math.abs(imm16)}`) : '';
-      asm = `MOV ${destRegName}, [${srcRegName}${offsetStr}]`;
+      const memTarget = isDirectMem
+        ? `[0x${rawImm16.toString(16).toUpperCase()}]`
+        : `[${srcRegName}${offsetStr}]`;
+      asm = `MOV ${destRegName}, ${memTarget}`;
       return {
         raw: u32,
         mnemonic,
@@ -152,9 +157,10 @@ export function decodeInstruction(raw: number): DecodedInstruction {
         dest: { type: 'REG', reg: destRegId, is16Bit: destIs16, rawString: destRegName },
         src: {
           type: 'MEM',
-          memBaseReg: srcRegId,
-          memOffset: imm16,
-          rawString: `[${srcRegName}${offsetStr}]`,
+          memBaseReg: isDirectMem ? undefined : srcRegId,
+          memOffset: isDirectMem ? rawImm16 : imm16,
+          isDirect: isDirectMem,
+          rawString: memTarget,
         },
         assemblyString: asm,
       };
@@ -163,16 +169,20 @@ export function decodeInstruction(raw: number): DecodedInstruction {
     case OPCODES.MOV_MR: {
       mnemonic = 'MOV';
       const offsetStr = imm16 !== 0 ? (imm16 > 0 ? ` + ${imm16}` : ` - ${Math.abs(imm16)}`) : '';
-      asm = `MOV [${destRegName}${offsetStr}], ${srcRegName}`;
+      const memTarget = isDirectMem
+        ? `[0x${rawImm16.toString(16).toUpperCase()}]`
+        : `[${destRegName}${offsetStr}]`;
+      asm = `MOV ${memTarget}, ${srcRegName}`;
       return {
         raw: u32,
         mnemonic,
         opcode,
         dest: {
           type: 'MEM',
-          memBaseReg: destRegId,
-          memOffset: imm16,
-          rawString: `[${destRegName}${offsetStr}]`,
+          memBaseReg: isDirectMem ? undefined : destRegId,
+          memOffset: isDirectMem ? rawImm16 : imm16,
+          isDirect: isDirectMem,
+          rawString: memTarget,
         },
         src: { type: 'REG', reg: srcRegId, is16Bit: srcIs16, rawString: srcRegName },
         assemblyString: asm,

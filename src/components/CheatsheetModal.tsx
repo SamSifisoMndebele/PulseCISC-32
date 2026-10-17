@@ -101,7 +101,7 @@ export const CheatsheetModal: React.FC<CheatsheetModalProps> = ({ isOpen, onClos
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-emerald-300 font-bold min-w-[70px]">DB / DW</span>
-                <span className="text-slate-300">Data Directives (stored in Data RAM at 0x0800+): <code className="text-slate-200">msg: DB "Hello\n", 0</code>, <code className="text-slate-200">nums: DB 1, 2, 3</code></span>
+                <span className="text-slate-300">Data Directives (stored in Data RAM at 0x2000+): <code className="text-slate-200">msg: DB "Hello\n", 0</code>, <code className="text-slate-200">nums: DB 1, 2, 3</code></span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-emerald-300 font-bold min-w-[70px]">JMP / HLT</span>
@@ -114,15 +114,15 @@ export const CheatsheetModal: React.FC<CheatsheetModalProps> = ({ isOpen, onClos
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-purple-400 font-bold uppercase text-[11px] tracking-wider">
               <Database className="w-4 h-4" />
-              <span>64 KB Memory Segmentation (Configurable)</span>
+              <span>64 KB Memory Segmentation (8 KB Code / 56 KB Data RAM)</span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/60 p-3 rounded-xl border border-slate-800">
               <div>
-                <span className="text-purple-300 font-bold">Code Segment</span>: 0x0000 - 0x07FF (2 KB standard)
-                <p className="text-[10px] text-slate-400 mt-1">Holds assembled 32-bit instructions pointed to by EIP (expandable via Settings).</p>
+                <span className="text-purple-300 font-bold">Code Segment</span>: 0x0000 - 0x1FFF (8 KB standard)
+                <p className="text-[10px] text-slate-400 mt-1">Holds up to 2,048 assembled 32-bit instructions pointed to by EIP (configurable via Settings).</p>
               </div>
               <div>
-                <span className="text-purple-300 font-bold">Data Segment</span>: 0x0800 - 0xFFFF (62+ KB RAM)
+                <span className="text-purple-300 font-bold">Data Segment</span>: 0x2000 - 0xFFFF (56 KB RAM)
                 <p className="text-[10px] text-slate-400 mt-1">Word-aligned RAM read/write via MOV [mem], reg. Stack top defaults to 0xFFFC.</p>
               </div>
             </div>

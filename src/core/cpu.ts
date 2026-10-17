@@ -254,6 +254,9 @@ export class CPU {
       this.latchA = this.readRegister(dest.reg, dest.is16Bit);
       const regName = dest.is16Bit ? SUB_REGISTER_NAMES[dest.reg] : REGISTER_NAMES[dest.reg];
       latchASource = `REG(${regName})`;
+    } else if (dest.type === 'MEM' && dest.isDirect) {
+      this.latchA = 0;
+      latchASource = `ADDR(0x${(dest.memOffset ?? 0).toString(16).toUpperCase()})`;
     } else if (dest.type === 'MEM' && dest.memBaseReg !== undefined) {
       this.latchA = this.readRegister(dest.memBaseReg, false);
       latchASource = `MEM_BASE(${REGISTER_NAMES[dest.memBaseReg]})`;
@@ -269,6 +272,9 @@ export class CPU {
       this.latchB = src.imm;
       latchBSource = `IMM(${src.imm})`;
       this.latchBIsImmediate = true;
+    } else if (src.type === 'MEM' && src.isDirect) {
+      this.latchB = 0;
+      latchBSource = `ADDR(0x${(src.memOffset ?? 0).toString(16).toUpperCase()})`;
     } else if (src.type === 'MEM' && src.memBaseReg !== undefined) {
       this.latchB = this.readRegister(src.memBaseReg, false);
       latchBSource = `MEM_BASE(${REGISTER_NAMES[src.memBaseReg]})`;
@@ -346,14 +352,18 @@ export class CPU {
       }
 
       case OPCODES.MOV_RM: {
-        // Load: Effective address = BaseReg + Offset
+        // Load: Effective address = BaseReg + Offset (or Direct Address)
         const offset = src.memOffset ?? 0;
-        this.aluOut = toUint32(this.latchB + offset);
+        this.aluOut = src.isDirect ? toUint32(offset) : toUint32(this.latchB + offset);
         this.activeBuses = ['LATCHES_TO_ALU', 'IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
-        const studentText = `Execute: Computed memory load address: ${this.latchBSource} (${toHex32(this.latchB)}) + offset (${offset}) = ${toHex32(this.aluOut)}.`;
+        const studentText = src.isDirect
+          ? `Execute: Direct memory load address = 0x${toUint32(offset).toString(16).toUpperCase()} (${toHex32(this.aluOut)}).`
+          : `Execute: Computed memory load address: ${this.latchBSource} (${toHex32(this.latchB)}) + offset (${offset}) = ${toHex32(this.aluOut)}.`;
         this.addTrace(
           'EXECUTE',
-          `Effective Address <- Latch_B (${toHex32(this.latchB)}) + Offset (${offset}) = ${toHex32(this.aluOut)}`,
+          src.isDirect
+            ? `Effective Address <- Direct Address (${toHex32(this.aluOut)})`
+            : `Effective Address <- Latch_B (${toHex32(this.latchB)}) + Offset (${offset}) = ${toHex32(this.aluOut)}`,
           `Computed memory address for load`,
           studentText
         );
@@ -363,14 +373,18 @@ export class CPU {
       }
 
       case OPCODES.MOV_MR: {
-        // Store: Effective address = BaseReg + Offset
+        // Store: Effective address = BaseReg + Offset (or Direct Address)
         const offset = dest.memOffset ?? 0;
-        this.aluOut = toUint32(this.latchA + offset);
+        this.aluOut = dest.isDirect ? toUint32(offset) : toUint32(this.latchA + offset);
         this.activeBuses = ['LATCHES_TO_ALU', 'IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
-        const studentText = `Execute: Computed memory store address: ${this.latchASource} (${toHex32(this.latchA)}) + offset (${offset}) = ${toHex32(this.aluOut)}.`;
+        const studentText = dest.isDirect
+          ? `Execute: Direct memory store address = 0x${toUint32(offset).toString(16).toUpperCase()} (${toHex32(this.aluOut)}).`
+          : `Execute: Computed memory store address: ${this.latchASource} (${toHex32(this.latchA)}) + offset (${offset}) = ${toHex32(this.aluOut)}.`;
         this.addTrace(
           'EXECUTE',
-          `Effective Address <- Latch_A (${toHex32(this.latchA)}) + Offset (${offset}) = ${toHex32(this.aluOut)}`,
+          dest.isDirect
+            ? `Effective Address <- Direct Address (${toHex32(this.aluOut)})`
+            : `Effective Address <- Latch_A (${toHex32(this.latchA)}) + Offset (${offset}) = ${toHex32(this.aluOut)}`,
           `Computed memory address for store`,
           studentText
         );
@@ -807,6 +821,12 @@ export class CPU {
       memorySize: this.memory.getSize(),
       dataStart: this.memory.getDataStart(),
       dataEnd: this.memory.getDataEnd(),
+      ramPreview: [
+        this.memory.readWord(this.memory.getDataStart()),
+        this.memory.readWord(this.memory.getDataStart() + 4),
+        this.memory.readWord(this.memory.getDataStart() + 8),
+        this.memory.readWord(this.memory.getDataStart() + 12),
+      ],
     };
   }
 }

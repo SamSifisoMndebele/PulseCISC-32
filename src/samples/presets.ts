@@ -27,16 +27,17 @@ HLT                 ; Halt processor clock
   },
   {
     id: 'sub_flags',
-    name: '2. Beginner: Subtraction & Zero Flag (SUB)',
-    description: 'Demonstrates arithmetic subtraction and watches the Zero Flag (ZF) turn active when reaching 0.',
+    name: '2. Beginner: Subtraction & Flags (SF & ZF)',
+    description: 'Demonstrates subtraction resulting in a negative number (Sign Flag / SF) and adding back to zero (Zero Flag / ZF).',
     code: `; PulseCISC-32: Introductory Lesson 2
 ; Learn subtraction and watch EFLAGS in action
 
-MOV EAX, 20         ; EAX = 20
-SUB EAX, 15         ; EAX = 20 - 15 = 5
-PRINT EAX           ; Output 5 to Console
+MOV EAX, 15         ; EAX = 15
+SUB EAX, 20         ; EAX = 15 - 20 = -5
+PRINT EAX           ; Output -5 to Console
+; Notice that the SF (Sign Flag) badge turns GREEN!
 
-SUB EAX, 5          ; EAX = 5 - 5 = 0
+ADD EAX, 5          ; EAX = -5 + 5 = 0
 PRINT EAX           ; Output 0 to Console
 ; Notice that the ZF (Zero Flag) badge turns GREEN!
 

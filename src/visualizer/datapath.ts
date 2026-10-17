@@ -410,11 +410,28 @@ export class DatapathRenderer {
     const drawLine = (points: Point2D[], active: boolean, activeColor: string = THEME.textAccent) => {
       if (points.length < 2) return;
       ctx.save();
+
+      const p1 = points[points.length - 2];
+      const p2 = points[points.length - 1];
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const segLen = Math.hypot(dx, dy);
+      const angle = Math.atan2(dy, dx);
+
+      const arrowLen = active ? THEME.activeArrowHeadLength : THEME.arrowHeadLength;
+      const arrowAngle = Math.PI / 6;
+
+      // Shorten line slightly so the blunt line cap does not protrude past the sharp arrowhead tip
+      const shortenDist = segLen > 0 ? Math.min(arrowLen * 0.7, segLen * 0.7) : 0;
+      const lineEndX = p2.x - shortenDist * Math.cos(angle);
+      const lineEndY = p2.y - shortenDist * Math.sin(angle);
+
       ctx.beginPath();
       ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
+      for (let i = 1; i < points.length - 1; i++) {
         ctx.lineTo(points[i].x, points[i].y);
       }
+      ctx.lineTo(lineEndX, lineEndY);
 
       if (active) {
         ctx.strokeStyle = activeColor;
@@ -428,14 +445,17 @@ export class DatapathRenderer {
       ctx.stroke();
 
       // Directional arrow on last segment
-      const p1 = points[points.length - 2];
-      const p2 = points[points.length - 1];
-      const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-      ctx.fillStyle = active ? activeColor : THEME.busDefault;
+      ctx.fillStyle = active ? activeColor : (THEME.busArrowDefault || THEME.busDefault);
       ctx.beginPath();
       ctx.moveTo(p2.x, p2.y);
-      ctx.lineTo(p2.x - 7 * Math.cos(angle - Math.PI / 6), p2.y - 7 * Math.sin(angle - Math.PI / 6));
-      ctx.lineTo(p2.x - 7 * Math.cos(angle + Math.PI / 6), p2.y - 7 * Math.sin(angle + Math.PI / 6));
+      ctx.lineTo(
+        p2.x - arrowLen * Math.cos(angle - arrowAngle),
+        p2.y - arrowLen * Math.sin(angle - arrowAngle)
+      );
+      ctx.lineTo(
+        p2.x - arrowLen * Math.cos(angle + arrowAngle),
+        p2.y - arrowLen * Math.sin(angle + arrowAngle)
+      );
       ctx.closePath();
       ctx.fill();
 

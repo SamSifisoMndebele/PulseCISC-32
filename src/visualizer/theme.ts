@@ -1,4 +1,4 @@
-// PulseRISC-32 Visual Theme & Phase Palette
+// PulseCISC-32 Visual Theme & Phase Palette
 
 export const THEME = {
   bg: '#0a0d14',
@@ -60,6 +60,9 @@ export const THEME = {
   // Bus Lines
   busDefault: '#1e293b',
   busInactive: 'rgba(255, 255, 255, 0.12)',
+  busArrowDefault: '#3b4d66',
   busWidth: 2.5,
   activeBusWidth: 3.5,
+  arrowHeadLength: 11.5,
+  activeArrowHeadLength: 13,
 };

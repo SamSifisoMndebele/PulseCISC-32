@@ -1,4 +1,4 @@
-// PulseRISC-32 4 KB Segmented Byte-Addressable Memory
+// PulseCISC-32 4 KB Segmented Byte-Addressable Memory
 import { toUint32 } from './isa';
 
 export const MEMORY_SIZE = 4096; // 4 KB

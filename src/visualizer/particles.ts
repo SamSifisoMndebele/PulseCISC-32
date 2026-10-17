@@ -1,4 +1,4 @@
-// PulseRISC-32 Particle Bus Animation Engine
+// PulseCISC-32 Particle Bus Animation Engine
 
 export interface Point2D {
   x: number;

@@ -1,6 +1,7 @@
 // PulseCISC-32 Main Application
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { CPU } from './core/cpu';
+import { Memory } from './core/memory';
 import { Assembler } from './core/assembler';
 import type { CPUMicroState, RegisterId, AssembledProgram } from './core/types';
 import { PRESETS } from './samples/presets';
@@ -13,22 +14,52 @@ import { SpecialRegistersView } from './components/SpecialRegistersView';
 import { MemoryGridView } from './components/MemoryGridView';
 import { TraceLogView } from './components/TraceLogView';
 import { CheatsheetModal } from './components/CheatsheetModal';
+import { SettingsModal } from './components/SettingsModal';
+import {
+  type SystemConfig,
+  loadSystemConfig,
+  saveSystemConfig,
+  getMemoryCapacityLabel,
+} from './core/config';
 import { Code2, Binary, Database, Cpu as CpuIcon } from 'lucide-react';
 
 export function App() {
-  const cpuRef = useRef<CPU>(new CPU());
+  // System Configuration (defaults to 64KB, persisted in localStorage)
+  const [systemConfig, setSystemConfig] = useState<SystemConfig>(() => loadSystemConfig());
+
+  // CPU Instance with configured memory capacity
+  const cpuRef = useRef<CPU | null>(null);
+  if (!cpuRef.current) {
+    const mem = new Memory(systemConfig.memorySize, systemConfig.dataStart);
+    const c = new CPU(mem);
+    if (systemConfig.initialEsp !== 'auto') {
+      c.defaultEsp = systemConfig.initialEsp;
+      c.reset();
+    }
+    cpuRef.current = c;
+  }
   const cpu = cpuRef.current;
 
   // Preset & Editor State
   const [selectedPresetId, setSelectedPresetId] = useState<string>(PRESETS[0].id);
   const [code, setCode] = useState<string>(PRESETS[0].code);
   const [assembled, setAssembled] = useState<AssembledProgram>(() =>
-    Assembler.assemble(PRESETS[0].code)
+    Assembler.assemble(PRESETS[0].code, {
+      codeStart: systemConfig.codeStart,
+      codeEnd: Math.max(0, systemConfig.dataStart - 1),
+      dataStart: systemConfig.dataStart,
+      dataEnd: systemConfig.memorySize - 1,
+    })
   );
 
   // CPU Snapshot State
   const [cpuState, setCpuState] = useState<CPUMicroState>(() => {
-    const initAsm = Assembler.assemble(PRESETS[0].code);
+    const initAsm = Assembler.assemble(PRESETS[0].code, {
+      codeStart: systemConfig.codeStart,
+      codeEnd: Math.max(0, systemConfig.dataStart - 1),
+      dataStart: systemConfig.dataStart,
+      dataEnd: systemConfig.memorySize - 1,
+    });
     cpu.memory.loadCode(initAsm.codeBytes);
     if (initAsm.dataBytes && initAsm.dataBytes.length > 0) {
       cpu.memory.loadData(initAsm.dataBytes);
@@ -38,9 +69,10 @@ export function App() {
 
   // Execution Controls
   const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [clockSpeed, setClockSpeed] = useState<number>(1.0); // 1 Hz default
+  const [clockSpeed, setClockSpeed] = useState<number>(systemConfig.defaultClockSpeed);
   const [isTraceOpen, setIsTraceOpen] = useState<boolean>(true);
   const [isCheatsheetOpen, setIsCheatsheetOpen] = useState<boolean>(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   // Panel Tabs
   const [leftTab, setLeftTab] = useState<'editor' | 'machineCode'>('editor');
@@ -56,7 +88,12 @@ export function App() {
   // Assemble and load program into Code Segment & Data Segment
   const handleAssemble = useCallback(() => {
     setIsRunning(false);
-    const result = Assembler.assemble(code);
+    const result = Assembler.assemble(code, {
+      codeStart: systemConfig.codeStart,
+      codeEnd: Math.max(0, systemConfig.dataStart - 1),
+      dataStart: systemConfig.dataStart,
+      dataEnd: systemConfig.memorySize - 1,
+    });
     setAssembled(result);
 
     if (result.errors.length === 0) {
@@ -67,7 +104,7 @@ export function App() {
       }
       setCpuState(cpu.getSnapshot());
     }
-  }, [code, cpu]);
+  }, [code, cpu, systemConfig]);
 
   // Load preset program
   const handleSelectPreset = (presetId: string) => {
@@ -77,7 +114,12 @@ export function App() {
     if (!preset) return;
 
     setCode(preset.code);
-    const result = Assembler.assemble(preset.code);
+    const result = Assembler.assemble(preset.code, {
+      codeStart: systemConfig.codeStart,
+      codeEnd: Math.max(0, systemConfig.dataStart - 1),
+      dataStart: systemConfig.dataStart,
+      dataEnd: systemConfig.memorySize - 1,
+    });
     setAssembled(result);
 
     cpu.reset();
@@ -121,6 +163,36 @@ export function App() {
     setIsRunning((prev) => !prev);
   }, [cpu.halted, handleReset]);
 
+  // Apply User System Configuration from Settings Modal
+  const handleApplyConfig = (newConfig: SystemConfig) => {
+    setIsRunning(false);
+    setSystemConfig(newConfig);
+    saveSystemConfig(newConfig);
+
+    // Resize Memory Buffer & Segment Boundaries
+    cpu.memory.resize(newConfig.memorySize, newConfig.dataStart);
+    cpu.defaultEsp = newConfig.initialEsp === 'auto' ? null : newConfig.initialEsp;
+
+    // Reassemble code with new boundaries
+    const result = Assembler.assemble(code, {
+      codeStart: newConfig.codeStart,
+      codeEnd: Math.max(0, newConfig.dataStart - 1),
+      dataStart: newConfig.dataStart,
+      dataEnd: newConfig.memorySize - 1,
+    });
+    setAssembled(result);
+
+    cpu.reset();
+    if (result.errors.length === 0) {
+      cpu.memory.loadCode(result.codeBytes);
+      if (result.dataBytes && result.dataBytes.length > 0) {
+        cpu.memory.loadData(result.dataBytes);
+      }
+    }
+    setClockSpeed(newConfig.defaultClockSpeed);
+    setCpuState(cpu.getSnapshot());
+  };
+
   // Manual Register Edit
   const handleUpdateRegister = (regId: RegisterId, value: number) => {
     cpu.writeRegister(regId, value, false);
@@ -158,11 +230,36 @@ export function App() {
     const timer = setTimeout(() => {
       // Step micro-step for smooth visual flow
       const nextState = cpu.stepMicro();
+
+      // Check safety cycle limit
+      if (
+        systemConfig.maxExecutionSteps > 0 &&
+        nextState.cycles >= systemConfig.maxExecutionSteps
+      ) {
+        setIsRunning(false);
+        cpu.consoleOutput.push({
+          id: Date.now(),
+          cycle: nextState.cycles,
+          type: 'system',
+          text: `[Safety Limit] Execution paused: reached continuous cycle limit (${systemConfig.maxExecutionSteps.toLocaleString()} cycles). You can adjust this in Settings.`,
+          timestamp: Date.now(),
+        });
+        setCpuState(cpu.getSnapshot());
+        return;
+      }
+
       setCpuState(nextState);
     }, intervalMs);
 
     return () => clearTimeout(timer);
-  }, [isRunning, clockSpeed, cpuState.halted, cpuState.cycles, cpu]);
+  }, [
+    isRunning,
+    clockSpeed,
+    cpuState.halted,
+    cpuState.cycles,
+    cpu,
+    systemConfig.maxExecutionSteps,
+  ]);
 
   // Keyboard Shortcuts (Space, F10, F11, Esc)
   useEffect(() => {
@@ -185,6 +282,7 @@ export function App() {
       } else if (e.key === 'Escape') {
         setIsRunning(false);
         setIsCheatsheetOpen(false);
+        setIsSettingsOpen(false);
       }
     };
 
@@ -205,6 +303,9 @@ export function App() {
         onClockSpeedChange={setClockSpeed}
         selectedPresetId={selectedPresetId}
         onSelectPreset={handleSelectPreset}
+        memorySizeLabel={`${getMemoryCapacityLabel(systemConfig.memorySize)} RAM`}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenCheatsheet={() => setIsCheatsheetOpen(true)}
       />
 
       {/* Main 3-Column Studio Workspace */}
@@ -261,6 +362,8 @@ export function App() {
           <CanvasView
             cpuState={cpuState}
             speedScale={Math.max(0.6, Math.min(3.0, clockSpeed / 2))}
+            enableParticles={systemConfig.enableParticleAnimations}
+            particleSpeed={systemConfig.particleSpeed}
           />
         </div>
 
@@ -325,6 +428,7 @@ export function App() {
                 lastModifiedAddr={cpuState.lastModifiedMem}
                 onUpdateWord={handleUpdateWord}
                 isPaused={!isRunning}
+                pageSize={systemConfig.memoryPageSize}
               />
             )}
           </div>
@@ -345,6 +449,14 @@ export function App() {
       <CheatsheetModal
         isOpen={isCheatsheetOpen}
         onClose={() => setIsCheatsheetOpen(false)}
+      />
+
+      {/* System Architecture Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        config={systemConfig}
+        onSaveConfig={handleApplyConfig}
       />
     </div>
   );

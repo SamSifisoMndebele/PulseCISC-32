@@ -7,6 +7,9 @@ import {
   RotateCcw,
   Cpu,
   Zap,
+  Settings,
+  Database,
+  BookOpen,
 } from 'lucide-react';
 import { PRESETS } from '../samples/presets';
 
@@ -20,6 +23,9 @@ interface NavbarProps {
   onClockSpeedChange: (speed: number) => void;
   selectedPresetId: string;
   onSelectPreset: (presetId: string) => void;
+  memorySizeLabel?: string;
+  onOpenSettings: () => void;
+  onOpenCheatsheet: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -32,26 +38,39 @@ export const Navbar: React.FC<NavbarProps> = ({
   onClockSpeedChange,
   selectedPresetId,
   onSelectPreset,
+  memorySizeLabel = '64 KB RAM',
+  onOpenSettings,
+  onOpenCheatsheet,
 }) => {
   return (
-    <header className="flex flex-wrap items-center justify-between px-5 py-3 bg-[#0d121d] border-b border-slate-800 text-slate-100 select-none gap-4">
+    <header className="flex flex-wrap items-center justify-between px-5 py-2.5 bg-[#0d121d] border-b border-slate-800 text-slate-100 select-none gap-3">
       {/* Brand & Architecture Identity */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 via-sky-500 to-emerald-400 p-[1px] shadow-lg shadow-sky-500/20">
+        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-sky-500 to-emerald-400 p-[1px] shadow-lg shadow-sky-500/20">
           <div className="flex items-center justify-center w-full h-full bg-[#090d16] rounded-[11px]">
-            <Cpu className="w-5 h-5 text-sky-400" />
+            <Cpu className="w-4 h-4 text-sky-400" />
           </div>
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-bold text-lg tracking-tight text-white font-mono">
+            <span className="font-bold text-base tracking-tight text-white font-mono">
               Pulse<span className="text-sky-400">CISC</span>-32
             </span>
-            <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-sky-950/80 text-sky-300 border border-sky-800/60">
+            <span className="text-[10px] font-semibold uppercase px-2 py-0.2 rounded-full bg-sky-950/80 text-sky-300 border border-sky-800/60">
               x86 IA-32
             </span>
+
+            {/* Clickable Memory Capacity Badge */}
+            <button
+              onClick={onOpenSettings}
+              title="Click to configure System & Memory Architecture"
+              className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-950/70 border border-purple-700/60 text-purple-300 hover:bg-purple-900/60 hover:text-white transition-all text-[10px] font-mono font-bold"
+            >
+              <Database className="w-3 h-3 text-purple-400" />
+              <span>{memorySizeLabel}</span>
+            </button>
           </div>
-          <p className="text-xs text-slate-400 hidden sm:block">
+          <p className="text-[11px] text-slate-400 hidden xl:block">
             Visual 32-Bit Multi-Cycle CPU & Memory Simulator
           </p>
         </div>
@@ -75,7 +94,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       {/* Execution Controls */}
-      <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-xl p-1 shadow-inner">
+      <div className="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 rounded-xl p-1 shadow-inner">
         {/* Run / Pause Toggle */}
         <button
           onClick={onToggleRun}
@@ -86,7 +105,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
           }`}
         >
-          {isRunning ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
+          {isRunning ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
           <span>{isRunning ? 'Pause' : 'Run'}</span>
         </button>
 
@@ -98,7 +117,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-40 transition-colors"
         >
           <Zap className="w-3.5 h-3.5 text-sky-400" />
-          <span>Step Micro</span>
+          <span className="hidden sm:inline">Step Micro</span>
+          <span className="sm:hidden">Micro</span>
         </button>
 
         {/* Step Instruction */}
@@ -109,7 +129,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-200 hover:bg-slate-800 disabled:opacity-40 transition-colors"
         >
           <SkipForward className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Step Inst</span>
+          <span className="hidden sm:inline">Step Inst</span>
+          <span className="sm:hidden">Inst</span>
         </button>
 
         {/* Reset */}
@@ -123,21 +144,43 @@ export const Navbar: React.FC<NavbarProps> = ({
         </button>
       </div>
 
-      {/* Clock Speed Slider */}
-      <div className="flex items-center gap-3 bg-slate-900/60 border border-slate-800/80 rounded-xl px-3 py-1.5">
-        <span className="text-xs text-slate-400">Clock:</span>
-        <input
-          type="range"
-          min="0.1"
-          max="30"
-          step="0.1"
-          value={clockSpeed}
-          onChange={(e) => onClockSpeedChange(parseFloat(e.target.value))}
-          className="w-24 accent-sky-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
-        />
-        <span className="text-xs font-mono font-semibold text-sky-400 min-w-[45px]">
-          {clockSpeed.toFixed(1)} Hz
-        </span>
+      {/* Clock Speed Slider & Extra Buttons */}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 bg-slate-900/60 border border-slate-800/80 rounded-xl px-2.5 py-1.5">
+          <span className="text-[11px] text-slate-400">Clock:</span>
+          <input
+            type="range"
+            min="0.1"
+            max="30"
+            step="0.1"
+            value={clockSpeed}
+            onChange={(e) => onClockSpeedChange(parseFloat(e.target.value))}
+            className="w-16 sm:w-20 accent-sky-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+          />
+          <span className="text-xs font-mono font-semibold text-sky-400 min-w-[38px]">
+            {clockSpeed.toFixed(1)}Hz
+          </span>
+        </div>
+
+        {/* ISA Manual Reference Button */}
+        <button
+          onClick={onOpenCheatsheet}
+          title="Open x86 ISA Reference Manual & Cheatsheet"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-emerald-300 hover:border-emerald-600/50 transition-colors text-xs font-medium"
+        >
+          <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="hidden lg:inline">Manual</span>
+        </button>
+
+        {/* System Settings Button */}
+        <button
+          onClick={onOpenSettings}
+          title="Configure System Architecture, Memory & Visualizer"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-sky-300 hover:border-sky-600/50 transition-colors text-xs font-medium shadow-sm"
+        >
+          <Settings className="w-3.5 h-3.5 text-sky-400" />
+          <span className="hidden lg:inline">Settings</span>
+        </button>
       </div>
     </header>
   );

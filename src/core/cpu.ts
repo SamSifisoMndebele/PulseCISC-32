@@ -63,6 +63,8 @@ export class CPU {
   public consoleOutput: ConsoleOutputEntry[] = [];
   private nextConsoleId: number = 1;
 
+  public defaultEsp: number | null = null;
+
   constructor(memory?: Memory) {
     this.memory = memory ?? new Memory();
     this.reset();
@@ -84,8 +86,8 @@ export class CPU {
     this.latchBSource = 'NONE';
     this.latchBIsImmediate = false;
     this.registers.fill(0);
-    // ESP (Stack Pointer) defaults to 0x0FFC (top of Data Segment)
-    this.registers[7] = 0x0ffc;
+    // ESP (Stack Pointer) defaults to top of Data Segment (e.g. 0xFFFC for 64KB)
+    this.registers[7] = this.defaultEsp ?? (this.memory.getDataEnd() & ~0x3);
 
     this.flags = { zf: false, sf: false, of: false };
     this.phase = 'HALTED';
@@ -100,12 +102,15 @@ export class CPU {
     this.lastModifiedMem = null;
     this.traceLog = [];
     this.nextTraceId = 1;
+    const memKb = (this.memory.getSize() / 1024).toFixed(0);
+    const memEndHex = (this.memory.getSize() - 1).toString(16).toUpperCase().padStart(4, '0');
+    const spHex = this.registers[7].toString(16).toUpperCase().padStart(4, '0');
     this.consoleOutput = [
       {
         id: this.nextConsoleId++,
         cycle: 0,
         type: 'system',
-        text: '[PulseCISC-32] System Reset. Ready for execution.',
+        text: `[PulseCISC-32] System Reset. Ready for execution. (Memory: ${memKb} KB [0x0000 - 0x${memEndHex}], ESP: 0x${spHex})`,
         timestamp: Date.now(),
       },
     ];
@@ -799,6 +804,9 @@ export class CPU {
       lastModifiedReg: this.lastModifiedReg,
       lastModifiedMem: this.lastModifiedMem,
       consoleOutput: [...this.consoleOutput],
+      memorySize: this.memory.getSize(),
+      dataStart: this.memory.getDataStart(),
+      dataEnd: this.memory.getDataEnd(),
     };
   }
 }

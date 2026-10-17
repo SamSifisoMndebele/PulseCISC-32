@@ -45,7 +45,7 @@ export const CheatsheetModal: React.FC<CheatsheetModalProps> = ({ isOpen, onClos
               <div><span className="text-sky-300 font-bold">ESI (SI)</span>: Source Index (pointer)</div>
               <div><span className="text-sky-300 font-bold">EDI (DI)</span>: Destination Index (pointer)</div>
               <div><span className="text-sky-300 font-bold">EBP (BP)</span>: Base Pointer (stack frame)</div>
-              <div><span className="text-sky-300 font-bold">ESP (SP)</span>: Stack Pointer (defaults 0x0FFC)</div>
+              <div><span className="text-sky-300 font-bold">ESP (SP)</span>: Stack Pointer (defaults 0xFFFC in 64 KB)</div>
             </div>
             <p className="text-[10px] text-slate-400">
               * Writing to 16-bit sub-registers (e.g. <code className="text-sky-300">MOV AX, 0x1234</code>) modifies bits [15:0] while preserving upper bits [31:16].
@@ -114,16 +114,16 @@ export const CheatsheetModal: React.FC<CheatsheetModalProps> = ({ isOpen, onClos
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-purple-400 font-bold uppercase text-[11px] tracking-wider">
               <Database className="w-4 h-4" />
-              <span>4 KB Memory Segmentation</span>
+              <span>64 KB Memory Segmentation (Configurable)</span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/60 p-3 rounded-xl border border-slate-800">
               <div>
-                <span className="text-purple-300 font-bold">Code Segment</span>: 0x0000 - 0x07FF (2 KB)
-                <p className="text-[10px] text-slate-400 mt-1">Holds up to 512 32-bit instructions pointed to by EIP.</p>
+                <span className="text-purple-300 font-bold">Code Segment</span>: 0x0000 - 0x07FF (2 KB standard)
+                <p className="text-[10px] text-slate-400 mt-1">Holds assembled 32-bit instructions pointed to by EIP (expandable via Settings).</p>
               </div>
               <div>
-                <span className="text-purple-300 font-bold">Data Segment</span>: 0x0800 - 0x0FFF (2 KB)
-                <p className="text-[10px] text-slate-400 mt-1">Word-aligned RAM read/write via MOV [mem], reg. Stack top at 0x0FFC.</p>
+                <span className="text-purple-300 font-bold">Data Segment</span>: 0x0800 - 0xFFFF (62+ KB RAM)
+                <p className="text-[10px] text-slate-400 mt-1">Word-aligned RAM read/write via MOV [mem], reg. Stack top defaults to 0xFFFC.</p>
               </div>
             </div>
           </div>

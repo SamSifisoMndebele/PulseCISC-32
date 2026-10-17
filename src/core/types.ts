@@ -146,6 +146,9 @@ export interface CPUMicroState {
   lastModifiedReg: RegisterId | null;
   lastModifiedMem: number | null;
   consoleOutput: ConsoleOutputEntry[];
+  memorySize?: number;
+  dataStart?: number;
+  dataEnd?: number;
 }
 
 export interface AssembledProgram {

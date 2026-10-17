@@ -2,7 +2,7 @@
 import type { AssembledProgram, AssemblyError, RegisterId } from './types';
 import { OPCODES, REGISTER_LOOKUP } from './isa';
 import type { ParsedRegisterToken } from './isa';
-import { CODE_END, DATA_START, DATA_END } from './memory';
+import { CODE_START, CODE_END, DATA_START, DATA_END } from './memory';
 
 interface DataDirective {
   type: 'DB' | 'DW' | 'DD';
@@ -32,7 +32,10 @@ export class Assembler {
   /**
    * Assembles strict 2-operand x86 assembly source code into machine code bytes and data bytes.
    */
-  public static assemble(source: string): AssembledProgram {
+  public static assemble(
+    source: string,
+    config?: { codeStart?: number; codeEnd?: number; dataStart?: number; dataEnd?: number }
+  ): AssembledProgram {
     const rawLines = source.split(/\r?\n/);
     const parsedLines: ParsedLine[] = [];
     const labels = new Map<string, number>();
@@ -41,9 +44,14 @@ export class Assembler {
     const errors: AssemblyError[] = [];
     const warnings: string[] = [];
 
+    const codeStart = config?.codeStart ?? CODE_START;
+    const codeEnd = config?.codeEnd ?? CODE_END;
+    const dataStart = config?.dataStart ?? DATA_START;
+    const dataEnd = config?.dataEnd ?? DATA_END;
+
     // Preprocessing & Pass 1: Extract labels and assign instruction / data addresses
-    let currentCodeAddress = 0x0000;
-    let currentDataAddress = DATA_START; // 0x0800
+    let currentCodeAddress = codeStart;
+    let currentDataAddress = dataStart;
     const pendingLabels: { name: string; lineIndex: number }[] = [];
 
     for (let i = 0; i < rawLines.length; i++) {
@@ -177,23 +185,26 @@ export class Assembler {
     }
     pendingLabels.length = 0;
 
-    if (currentCodeAddress > CODE_END + 1) {
+    const codeCap = codeEnd - codeStart + 1;
+    const dataCap = dataEnd - dataStart + 1;
+
+    if (currentCodeAddress > codeEnd + 1) {
       errors.push({
         line: 1,
-        message: `Program code size (${currentCodeAddress} bytes) exceeds Code Segment capacity (2048 bytes).`,
+        message: `Program code size (${currentCodeAddress - codeStart} bytes) exceeds Code Segment capacity (${codeCap} bytes).`,
       });
     }
 
-    if (currentDataAddress > DATA_END + 1) {
+    if (currentDataAddress > dataEnd + 1) {
       errors.push({
         line: 1,
-        message: `Program data size (${currentDataAddress - DATA_START} bytes) exceeds Data Segment capacity (2048 bytes).`,
+        message: `Program data size (${currentDataAddress - dataStart} bytes) exceeds Data Segment capacity (${dataCap} bytes).`,
       });
     }
 
     // Pass 2: Encode instructions into machine code and data into dataBytes
-    const codeBytes = new Uint8Array(2048);
-    const dataBytes = new Uint8Array(2048);
+    const codeBytes = new Uint8Array(Math.max(2048, codeCap));
+    const dataBytes = new Uint8Array(Math.max(2048, dataCap));
     let codePointer = 0;
     let dataPointer = 0;
 

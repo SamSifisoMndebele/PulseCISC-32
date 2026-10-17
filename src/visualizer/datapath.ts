@@ -54,6 +54,9 @@ export class DatapathRenderer {
   private animStepPhase: CPUPhase = 'FETCH';
   private prevDisplayed: DisplaySnapshot | null = null;
   private targetDisplayed: DisplaySnapshot | null = null;
+  public enableParticles: boolean = true;
+  public particleSpeedMultiplier: number = 1.0;
+  private lastState: CPUMicroState | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -147,6 +150,8 @@ export class DatapathRenderer {
       bMDR,
       bDataRAM,
     };
+
+    this.lastState = state;
 
     // Update Sequential Animation Timing on CPU Step
     const now = performance.now();
@@ -376,7 +381,9 @@ export class DatapathRenderer {
     this.drawDataRAM(ctx, bDataRAM, state, isDataRAMActive, dataRAMColor, pulseRAM);
 
     // 3. Render Continuous Bus Flow & Sequential Staged Particles
-    this.renderDatapathParticles(ctx, boxes, state, P, activeCUPhase, from, to, speedScale);
+    if (this.enableParticles) {
+      this.renderDatapathParticles(ctx, boxes, state, P, activeCUPhase, from, to, speedScale * this.particleSpeedMultiplier);
+    }
 
     ctx.restore();
   }
@@ -1451,10 +1458,12 @@ export class DatapathRenderer {
     pulse: number = 0
   ): void {
     const isMem = active || pulse > 0;
-    this.drawCard(ctx, box, 'Data RAM (4 KB)', isMem, activeColor, pulse);
+    const memKb = Math.round((state.memorySize ?? 65536) / 1024);
+    this.drawCard(ctx, box, `Data RAM (${memKb} KB)`, isMem, activeColor, pulse);
 
+    const baseDataAddr = state.dataStart ?? 0x0800;
     for (let i = 0; i < 4; i++) {
-      const addr = 0x0800 + i * 4;
+      const addr = baseDataAddr + i * 4;
       const val = state.mar === addr && isMem ? state.mdr : 0;
       const y = box.y + 30 + i * 30;
 
@@ -1664,15 +1673,19 @@ export class DatapathRenderer {
         };
 
       case 'DATA_RAM':
-      default:
+      default: {
+        const memKb = Math.round((this.lastState?.memorySize ?? 65536) / 1024);
+        const dStart = (this.lastState?.dataStart ?? 0x800).toString(16).toUpperCase().padStart(4, '0');
+        const dEnd = (this.lastState?.dataEnd ?? 0xffff).toString(16).toUpperCase().padStart(4, '0');
         return {
           id: 'DATA_RAM',
-          title: 'Data RAM (0x800 - 0xFFF)',
+          title: `Data RAM (0x${dStart} - 0x${dEnd}) • ${memKb} KB`,
           category: 'MEMORY',
           role: 'Volatile memory storing variables and program data',
           summary: 'Read and written only during the MEMORY phase of memory instructions (MOV reg, [mem]).',
           bounds,
         };
+      }
     }
   }
 }

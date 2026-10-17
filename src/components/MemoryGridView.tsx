@@ -1,8 +1,8 @@
-// PulseCISC-32 Data RAM Memory Viewer (0x0800 - 0x0FFF)
-import React, { useState } from 'react';
+// PulseCISC-32 / PulseRISC-32 Dynamic RAM Memory Viewer
+import React, { useState, useEffect } from 'react';
 import { Memory } from '../core/memory';
 import { toHex32 } from '../core/isa';
-import { Search, Edit2, Check, X } from 'lucide-react';
+import { Search, Edit2, Check, X, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 
 interface MemoryGridViewProps {
   memory: Memory;
@@ -10,6 +10,7 @@ interface MemoryGridViewProps {
   lastModifiedAddr: number | null;
   onUpdateWord: (addr: number, value: number) => void;
   isPaused: boolean;
+  pageSize?: number;
 }
 
 export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
@@ -18,25 +19,37 @@ export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
   lastModifiedAddr,
   onUpdateWord,
   isPaused,
+  pageSize = 16,
 }) => {
-  const [searchAddr, setSearchAddr] = useState<string>('0x0800');
-  const [startOffset, setStartOffset] = useState<number>(0x0800);
+  const dataStart = memory.getDataStart();
+  const dataEnd = memory.getDataEnd();
+  const memorySize = memory.getSize();
+
+  const [searchAddr, setSearchAddr] = useState<string>(`0x${dataStart.toString(16).padStart(4, '0').toUpperCase()}`);
+  const [startOffset, setStartOffset] = useState<number>(dataStart);
   const [editingAddr, setEditingAddr] = useState<number | null>(null);
   const [editValStr, setEditValStr] = useState<string>('');
 
-  // Show 16 words (64 bytes) per page
-  const rowsCount = 16;
+  // When memory dataStart or size changes, update startOffset if out of bounds
+  useEffect(() => {
+    if (startOffset > dataEnd || startOffset < 0) {
+      setStartOffset(dataStart);
+      setSearchAddr(`0x${dataStart.toString(16).padStart(4, '0').toUpperCase()}`);
+    }
+  }, [dataStart, dataEnd, startOffset]);
+
+  const rowsCount = pageSize;
   const addresses: number[] = [];
   for (let i = 0; i < rowsCount; i++) {
     const a = startOffset + i * 4;
-    if (a <= 0x0ffc) {
+    if (a <= dataEnd) {
       addresses.push(a);
     }
   }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    let addr = 0x0800;
+    let addr = dataStart;
     const clean = searchAddr.trim();
     if (clean.startsWith('0x') || clean.startsWith('0X')) {
       addr = parseInt(clean, 16);
@@ -44,10 +57,22 @@ export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
       addr = parseInt(clean, 10);
     }
     if (!isNaN(addr)) {
-      // Clamp to Data Segment and align to 4
-      const clamped = Math.max(0x0800, Math.min(0x0ffc, addr & ~0x3));
+      const clamped = Math.max(0, Math.min(memorySize - 4, addr & ~0x3));
       setStartOffset(clamped);
+      setSearchAddr(`0x${clamped.toString(16).padStart(4, '0').toUpperCase()}`);
     }
+  };
+
+  const handlePrevPage = () => {
+    const nextOffset = Math.max(0, startOffset - rowsCount * 4);
+    setStartOffset(nextOffset);
+    setSearchAddr(`0x${nextOffset.toString(16).padStart(4, '0').toUpperCase()}`);
+  };
+
+  const handleNextPage = () => {
+    const nextOffset = Math.min(dataEnd & ~0x3, startOffset + rowsCount * 4);
+    setStartOffset(nextOffset);
+    setSearchAddr(`0x${nextOffset.toString(16).padStart(4, '0').toUpperCase()}`);
   };
 
   const handleStartEdit = (addr: number) => {
@@ -70,25 +95,35 @@ export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
     setEditingAddr(null);
   };
 
+  const stackTopAddr = dataEnd & ~0x3;
+  const currentPage = Math.floor(startOffset / (rowsCount * 4)) + 1;
+  const totalPages = Math.ceil(memorySize / (rowsCount * 4));
+
   return (
     <div className="flex flex-col h-full bg-[#0b0f19] border-t border-slate-800 text-slate-100 font-mono text-xs">
       {/* Header & Search */}
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900/80 border-b border-slate-800 gap-2">
-        <span className="font-semibold text-xs text-slate-200 truncate">
-          Data RAM (0x0800 - 0x0FFF)
-        </span>
+        <div className="flex items-center gap-2 truncate">
+          <Layers className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+          <span className="font-semibold text-xs text-slate-200 truncate">
+            RAM (0x{dataStart.toString(16).padStart(4, '0').toUpperCase()} - 0x{dataEnd.toString(16).padStart(4, '0').toUpperCase()})
+          </span>
+          <span className="px-1.5 py-0.2 rounded bg-purple-950/80 text-purple-300 border border-purple-800/60 text-[10px] font-bold">
+            {(memorySize / 1024).toFixed(0)} KB
+          </span>
+        </div>
 
         <form onSubmit={handleSearch} className="flex items-center gap-1">
           <input
             type="text"
             value={searchAddr}
             onChange={(e) => setSearchAddr(e.target.value)}
-            placeholder="0x0800"
+            placeholder={`0x${dataStart.toString(16).padStart(4, '0')}`}
             className="w-20 px-2 py-0.5 bg-slate-950 border border-slate-700 rounded text-[11px] text-slate-200 focus:outline-none focus:border-sky-500 font-mono"
           />
           <button
             type="submit"
-            className="p-1 text-slate-400 hover:text-sky-400 bg-slate-800 rounded"
+            className="p-1 text-slate-400 hover:text-sky-400 bg-slate-800 rounded transition-colors"
             title="Jump to Address"
           >
             <Search className="w-3 h-3" />
@@ -96,36 +131,63 @@ export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
         </form>
       </div>
 
-      {/* Quick Jump Buttons */}
-      <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-950/50 border-b border-slate-800/60 text-[10px]">
-        <span className="text-slate-500">Jump:</span>
-        <button
-          onClick={() => {
-            setStartOffset(0x0800);
-            setSearchAddr('0x0800');
-          }}
-          className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700"
-        >
-          0x0800 (Data Start)
-        </button>
-        <button
-          onClick={() => {
-            setStartOffset(0x0820);
-            setSearchAddr('0x0820');
-          }}
-          className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700"
-        >
-          0x0820
-        </button>
-        <button
-          onClick={() => {
-            setStartOffset(0x0fc0);
-            setSearchAddr('0x0FC0');
-          }}
-          className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700"
-        >
-          0x0FC0 (Stack)
-        </button>
+      {/* Quick Jump Buttons & Pagination Controls */}
+      <div className="flex items-center justify-between px-3 py-1 bg-slate-950/60 border-b border-slate-800/70 text-[10px] flex-wrap gap-1">
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-500">Jump:</span>
+          <button
+            onClick={() => {
+              setStartOffset(dataStart);
+              setSearchAddr(`0x${dataStart.toString(16).padStart(4, '0').toUpperCase()}`);
+            }}
+            className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+          >
+            0x{dataStart.toString(16).padStart(4, '0').toUpperCase()} (Data)
+          </button>
+          <button
+            onClick={() => {
+              const off = dataStart + 0x20;
+              setStartOffset(off);
+              setSearchAddr(`0x${off.toString(16).padStart(4, '0').toUpperCase()}`);
+            }}
+            className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+          >
+            +0x20
+          </button>
+          <button
+            onClick={() => {
+              const stackAddr = Math.max(dataStart, stackTopAddr - (rowsCount - 1) * 4);
+              setStartOffset(stackAddr);
+              setSearchAddr(`0x${stackTopAddr.toString(16).padStart(4, '0').toUpperCase()}`);
+            }}
+            className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors"
+          >
+            0x{stackTopAddr.toString(16).padStart(4, '0').toUpperCase()} (Stack)
+          </button>
+        </div>
+
+        {/* Page Nav */}
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-slate-400 mr-1">
+            Pg {currentPage}/{totalPages}
+          </span>
+          <button
+            onClick={handlePrevPage}
+            disabled={startOffset <= 0}
+            className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 transition-colors"
+            title="Previous Page"
+          >
+            <ChevronLeft className="w-3 h-3" />
+          </button>
+          <button
+            onClick={handleNextPage}
+            disabled={startOffset + rowsCount * 4 > dataEnd}
+            className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 transition-colors"
+            title="Next Page"
+          >
+            <ChevronRight className="w-3 h-3" />
+          </button>
+        </div>
       </div>
 
       {/* Memory Table */}
@@ -135,6 +197,7 @@ export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
           const isActive = (activeMar & ~0x3) === addr;
           const isModified = lastModifiedAddr !== null && (lastModifiedAddr & ~0x3) === addr;
           const isEditing = editingAddr === addr;
+          const isStackTop = addr === stackTopAddr;
 
           return (
             <div
@@ -152,8 +215,15 @@ export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
                   0x{addr.toString(16).padStart(4, '0').toUpperCase()}
                 </span>
                 <span className="text-slate-500 text-[10px]">
-                  (+{addr - 0x0800})
+                  {addr >= dataStart
+                    ? `(+0x${(addr - dataStart).toString(16).toUpperCase()})`
+                    : `(Code)`}
                 </span>
+                {isStackTop && (
+                  <span className="px-1 py-0.2 rounded bg-amber-950/80 border border-amber-600/60 text-amber-300 text-[9px] font-bold">
+                    ESP_INIT
+                  </span>
+                )}
               </div>
 
               {isEditing ? (

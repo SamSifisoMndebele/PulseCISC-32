@@ -9,9 +9,16 @@ import { HelpCircle, Lightbulb, Cpu } from 'lucide-react';
 interface CanvasViewProps {
   cpuState: CPUMicroState;
   speedScale: number;
+  enableParticles?: boolean;
+  particleSpeed?: 'slow' | 'normal' | 'fast';
 }
 
-export const CanvasView: React.FC<CanvasViewProps> = ({ cpuState, speedScale }) => {
+export const CanvasView: React.FC<CanvasViewProps> = ({
+  cpuState,
+  speedScale,
+  enableParticles = true,
+  particleSpeed = 'normal',
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<DatapathRenderer | null>(null);
@@ -26,6 +33,8 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ cpuState, speedScale }) 
 
     // Initialize renderer
     const renderer = new DatapathRenderer(canvas);
+    renderer.enableParticles = enableParticles;
+    renderer.particleSpeedMultiplier = particleSpeed === 'fast' ? 1.8 : particleSpeed === 'slow' ? 0.5 : 1.0;
     rendererRef.current = renderer;
 
     let animId: number;
@@ -42,6 +51,8 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ cpuState, speedScale }) 
         canvas.height = displayHeight;
       }
 
+      renderer.enableParticles = enableParticles;
+      renderer.particleSpeedMultiplier = particleSpeed === 'fast' ? 1.8 : particleSpeed === 'slow' ? 0.5 : 1.0;
       renderer.render(cpuState, speedScale);
       animId = requestAnimationFrame(loop);
     };
@@ -51,7 +62,7 @@ export const CanvasView: React.FC<CanvasViewProps> = ({ cpuState, speedScale }) 
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [cpuState, speedScale]);
+  }, [cpuState, speedScale, enableParticles, particleSpeed]);
 
   // Mouse move handler for interactive hit-testing and contextual tooltips
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {

@@ -8,8 +8,6 @@ import {
   Cpu,
   Zap,
 } from 'lucide-react';
-import type { CPUPhase } from '../core/types';
-import { THEME } from '../visualizer/theme';
 import { PRESETS } from '../samples/presets';
 
 interface NavbarProps {
@@ -20,7 +18,6 @@ interface NavbarProps {
   onReset: () => void;
   clockSpeed: number;
   onClockSpeedChange: (speed: number) => void;
-  currentPhase: CPUPhase;
   selectedPresetId: string;
   onSelectPreset: (presetId: string) => void;
 }
@@ -33,12 +30,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onReset,
   clockSpeed,
   onClockSpeedChange,
-  currentPhase,
   selectedPresetId,
   onSelectPreset,
 }) => {
-  const phaseInfo = THEME.phases[currentPhase] || THEME.phases.FETCH;
-
   return (
     <header className="flex flex-wrap items-center justify-between px-5 py-3 bg-[#0d121d] border-b border-slate-800 text-slate-100 select-none gap-4">
       {/* Brand & Architecture Identity */}
@@ -144,24 +138,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         <span className="text-xs font-mono font-semibold text-sky-400 min-w-[45px]">
           {clockSpeed.toFixed(1)} Hz
         </span>
-      </div>
-
-      {/* Active Phase Pill */}
-      <div className="flex items-center gap-2">
-        <div
-          className="flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-semibold tracking-wide uppercase transition-all shadow-sm"
-          style={{
-            borderColor: phaseInfo.primary,
-            backgroundColor: `${phaseInfo.primary}15`,
-            color: phaseInfo.primary,
-          }}
-        >
-          <span
-            className="w-2 h-2 rounded-full animate-pulse"
-            style={{ backgroundColor: phaseInfo.primary }}
-          />
-          <span>{phaseInfo.name}</span>
-        </div>
       </div>
     </header>
   );

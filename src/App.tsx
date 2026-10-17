@@ -46,8 +46,12 @@ export function App() {
   const [leftTab, setLeftTab] = useState<'editor' | 'machineCode'>('editor');
   const [rightTab, setRightTab] = useState<'registers' | 'ram'>('registers');
 
-  // Compute active source line from current EIP
-  const activeLineIndex = assembled.addressToLine.get(cpuState.eip & ~0x3) ?? null;
+  // Compute active source line from current instruction
+  const currentInstAddr =
+    cpuState.phase === 'HALTED' && cpuState.cycles === 0
+      ? cpuState.eip
+      : (cpuState.oldEip ?? cpuState.eip);
+  const activeLineIndex = assembled.addressToLine.get(currentInstAddr & ~0x3) ?? null;
 
   // Assemble and load program into Code Segment & Data Segment
   const handleAssemble = useCallback(() => {
@@ -199,7 +203,6 @@ export function App() {
         onReset={handleReset}
         clockSpeed={clockSpeed}
         onClockSpeedChange={setClockSpeed}
-        currentPhase={cpuState.phase}
         selectedPresetId={selectedPresetId}
         onSelectPreset={handleSelectPreset}
       />
@@ -247,7 +250,7 @@ export function App() {
             ) : (
               <MachineCodeView
                 codeBytes={assembled.codeBytes}
-                currentEIP={cpuState.eip}
+                currentEIP={currentInstAddr}
               />
             )}
           </div>

@@ -241,8 +241,7 @@ MOV EBX, 0          ; Return status code 0 (success)
 INT 0x80            ; Process exits cleanly!
 
 ; --- Data Segment (Loaded into RAM at 0x0800) ---
-msg:
-  DB "Hello from INT 0x80!\n", 0
+msg: DB "Hello from INT 0x80!\n", 0
 `,
   },
 ];

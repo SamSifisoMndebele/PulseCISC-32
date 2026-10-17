@@ -42,8 +42,9 @@ export class CPU {
   };
 
   // State Machine
-  public phase: CPUPhase = 'FETCH';
-  public stepPhase?: CPUPhase;
+  public phase: CPUPhase = 'HALTED';
+  public nextPhase: CPUPhase = 'FETCH';
+  public stepPhase?: CPUPhase = 'HALTED';
   public decoded: DecodedInstruction | null = null;
   public activeBuses: ActiveBusId[] = [];
   public cycles: number = 0;
@@ -87,8 +88,9 @@ export class CPU {
     this.registers[7] = 0x0ffc;
 
     this.flags = { zf: false, sf: false, of: false };
-    this.phase = 'FETCH';
-    this.stepPhase = undefined;
+    this.phase = 'HALTED';
+    this.nextPhase = 'FETCH';
+    this.stepPhase = 'HALTED';
     this.decoded = null;
     this.activeBuses = [];
     this.cycles = 0;
@@ -145,9 +147,11 @@ export class CPU {
     this.lastModifiedReg = null;
     this.lastModifiedMem = null;
     this.activeBuses = [];
-    this.stepPhase = this.phase;
 
-    switch (this.phase) {
+    const toExecute = this.nextPhase;
+    this.stepPhase = toExecute;
+
+    switch (toExecute) {
       case 'FETCH':
         this.executeFetch();
         break;
@@ -164,6 +168,8 @@ export class CPU {
         this.executeWriteback();
         break;
       case 'HALTED':
+        this.phase = 'HALTED';
+        this.nextPhase = 'HALTED';
         this.halted = true;
         break;
     }
@@ -212,7 +218,8 @@ export class CPU {
       studentEnglish
     );
 
-    this.phase = 'DECODE';
+    this.phase = 'FETCH';
+    this.nextPhase = 'DECODE';
   }
 
   private executeDecode(): void {
@@ -221,6 +228,7 @@ export class CPU {
 
     if (opcode === OPCODES.HLT) {
       this.phase = 'HALTED';
+      this.nextPhase = 'HALTED';
       this.halted = true;
       this.activeBuses = ['IR_TO_CU'];
       this.addTrace(
@@ -290,7 +298,8 @@ export class CPU {
       { name: latchBSource, type: src.type, value: this.latchB }
     );
 
-    this.phase = 'EXECUTE';
+    this.phase = 'DECODE';
+    this.nextPhase = 'EXECUTE';
   }
 
   private executeExecute(): void {
@@ -309,7 +318,8 @@ export class CPU {
           `Prepared value for register writeback`,
           studentText
         );
-        this.phase = 'WRITEBACK';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'WRITEBACK';
         break;
       }
 
@@ -325,7 +335,8 @@ export class CPU {
           `Loaded upper 16 bits into high half of register`,
           studentText
         );
-        this.phase = 'WRITEBACK';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'WRITEBACK';
         break;
       }
 
@@ -341,7 +352,8 @@ export class CPU {
           `Computed memory address for load`,
           studentText
         );
-        this.phase = 'MEMORY';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'MEMORY';
         break;
       }
 
@@ -357,7 +369,8 @@ export class CPU {
           `Computed memory address for store`,
           studentText
         );
-        this.phase = 'MEMORY';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'MEMORY';
         break;
       }
 
@@ -389,7 +402,8 @@ export class CPU {
           `Computed ${mnemonic} and updated EFLAGS`,
           studentText
         );
-        this.phase = 'WRITEBACK';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'WRITEBACK';
         break;
       }
 
@@ -408,7 +422,8 @@ export class CPU {
         );
         // CMP has no writeback phase; finishes in Execute!
         this.instructionCount++;
-        this.phase = 'FETCH';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
         break;
       }
 
@@ -433,7 +448,8 @@ export class CPU {
           );
         }
         this.instructionCount++;
-        this.phase = 'FETCH';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
         break;
       }
 
@@ -458,7 +474,8 @@ export class CPU {
           );
         }
         this.instructionCount++;
-        this.phase = 'FETCH';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
         break;
       }
 
@@ -473,7 +490,8 @@ export class CPU {
           `Execute: Unconditional jump. Loaded target address ${toHex32(this.eip)} into EIP.`
         );
         this.instructionCount++;
-        this.phase = 'FETCH';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
         break;
       }
 
@@ -505,7 +523,8 @@ export class CPU {
         );
 
         this.instructionCount++;
-        this.phase = 'FETCH';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
         break;
       }
 
@@ -527,6 +546,7 @@ export class CPU {
               });
               this.halted = true;
               this.phase = 'HALTED';
+              this.nextPhase = 'HALTED';
               this.addTrace(
                 'EXECUTE',
                 `INT 0x80 -> sys_exit(status=${status})`,
@@ -632,7 +652,8 @@ export class CPU {
         }
 
         this.instructionCount++;
-        this.phase = 'FETCH';
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
         break;
       }
     }
@@ -654,7 +675,8 @@ export class CPU {
         `Loaded 32-bit word from memory`,
         studentText
       );
-      this.phase = 'WRITEBACK';
+      this.phase = 'MEMORY';
+      this.nextPhase = 'WRITEBACK';
     } else if (opcode === OPCODES.MOV_MR) {
       // Store
       this.mar = this.aluOut;
@@ -682,9 +704,12 @@ export class CPU {
         studentText
       );
       this.instructionCount++;
-      this.phase = 'FETCH';
+      this.phase = 'MEMORY';
+      this.nextPhase = 'FETCH';
     } else {
-      this.phase = 'FETCH';
+      this.instructionCount++;
+      this.phase = 'MEMORY';
+      this.nextPhase = 'FETCH';
     }
   }
 
@@ -715,7 +740,8 @@ export class CPU {
     }
 
     this.instructionCount++;
-    this.phase = 'FETCH';
+    this.phase = 'WRITEBACK';
+    this.nextPhase = 'FETCH';
   }
 
   private addTrace(
@@ -747,6 +773,7 @@ export class CPU {
   }
 
   public getSnapshot(): CPUMicroState {
+    const isInitialHalted = this.phase === 'HALTED' && this.cycles === 0;
     return {
       eip: this.eip,
       oldEip: this.oldEip,
@@ -763,7 +790,7 @@ export class CPU {
       flags: { ...this.flags },
       phase: this.phase,
       stepPhase: this.stepPhase,
-      codeWord: this.memory.readWord(this.mar),
+      codeWord: isInitialHalted ? 0 : this.ir,
       decoded: this.decoded ? { ...this.decoded } : null,
       activeBuses: [...this.activeBuses],
       cycles: this.cycles,

@@ -1,6 +1,6 @@
 // PulseCISC-32 Datapath Canvas Renderer
 import type { CPUMicroState, ActiveBusId, CPUPhase, DecodedInstruction } from '../core/types';
-import { toHex32, toInt32, REGISTER_NAMES, SUB_REGISTER_NAMES } from '../core/isa';
+import { toHex32, toInt32, REGISTER_NAMES, SUB_REGISTER_NAMES, OPCODES } from '../core/isa';
 import { THEME } from './theme';
 import { ParticleSystem } from './particles';
 import type { Point2D } from './particles';
@@ -97,13 +97,13 @@ export class DatapathRenderer {
     // Draw subtle grid pattern
     this.drawGrid(ctx, width, height);
 
-    // Scale coordinates to fit canvas dimensions (1100x680 reference design)
-    const scaleX = width / 1100;
+    // Scale coordinates to fit canvas dimensions (1140x680 reference design)
+    const scaleX = width / 1140;
     const scaleY = height / 680;
     const scale = Math.min(scaleX, scaleY, 1.3);
 
     ctx.save();
-    const offsetX = (width - 1100 * scale) / 2;
+    const offsetX = (width - 1140 * scale) / 2;
     const offsetY = (height - 680 * scale) / 2;
     this.currentTransform = { scale, offsetX, offsetY };
     ctx.translate(offsetX, offsetY);
@@ -116,7 +116,7 @@ export class DatapathRenderer {
     const bIR: ComponentBounds = { x: 465, y: 70, w: 185, h: 85, title: 'Instruction Register (IR)' };
 
     // Control Unit as dedicated FSM controller banner in top-right
-    const bCU: ComponentBounds = { x: 695, y: 45, w: 365, h: 115, title: 'Control Unit (FSM)' };
+    const bCU: ComponentBounds = { x: 695, y: 45, w: 375, h: 115, title: 'Control Unit (FSM)' };
 
     // Execution & Storage Datapath components
     const bRegs: ComponentBounds = { x: 160, y: 210, w: 220, h: 265, title: 'Register File (8 x 32-bit)' };
@@ -127,9 +127,9 @@ export class DatapathRenderer {
     const bFlags: ComponentBounds = { x: 790, y: 225, w: 120, h: 70, title: 'EFLAGS (ZF, SF, OF)' };
     const bALUOut: ComponentBounds = { x: 790, y: 320, w: 120, h: 55, title: 'ALU_Out Latch' };
 
-    const bMAR: ComponentBounds = { x: 960, y: 215, w: 105, h: 55, title: 'MAR (Address)' };
-    const bMDR: ComponentBounds = { x: 960, y: 295, w: 105, h: 55, title: 'MDR (Data)' };
-    const bDataRAM: ComponentBounds = { x: 940, y: 395, w: 145, h: 165, title: 'Data RAM (4 KB)' };
+    const bMAR: ComponentBounds = { x: 945, y: 215, w: 105, h: 55, title: 'MAR (Address)' };
+    const bMDR: ComponentBounds = { x: 945, y: 295, w: 105, h: 55, title: 'MDR (Data)' };
+    const bDataRAM: ComponentBounds = { x: 980, y: 395, w: 140, h: 165, title: 'Data RAM (4 KB)' };
 
     const boxes = {
       bAdder,
@@ -154,18 +154,24 @@ export class DatapathRenderer {
     const dt = Math.min(0.05, (now - this.lastFrameTime) / 1000);
     this.lastFrameTime = now;
 
-    if (state.cycles !== this.prevCycles) {
+    if (state.cycles === 0) {
+      this.prevDisplayed = this.snapshotDisplay(state);
+      this.targetDisplayed = this.snapshotDisplay(state);
+      this.animProgress = 1.0;
+      this.animStepPhase = state.phase;
+      this.prevCycles = 0;
+    } else if (state.cycles !== this.prevCycles) {
       if (this.prevCycles === -1) {
         // Initial setup
         this.prevDisplayed = this.snapshotDisplay(state);
         this.targetDisplayed = this.snapshotDisplay(state);
         this.animProgress = 1.0;
-        this.animStepPhase = state.stepPhase || state.phase;
+        this.animStepPhase = state.phase;
       } else {
         // Step transition triggered!
         this.prevDisplayed = this.targetDisplayed ? { ...this.targetDisplayed } : this.snapshotDisplay(state);
         this.targetDisplayed = this.snapshotDisplay(state);
-        this.animStepPhase = state.stepPhase || (state.phase === 'DECODE' ? 'FETCH' : state.phase === 'EXECUTE' ? 'DECODE' : state.phase);
+        this.animStepPhase = state.stepPhase || state.phase;
         this.animProgress = 0.0;
       }
       this.prevCycles = state.cycles;
@@ -210,8 +216,16 @@ export class DatapathRenderer {
         if (P >= 0.38 && P <= 0.6) pulseALU = Math.sin(((P - 0.38) / 0.22) * Math.PI);
         if (P >= 0.88 && P <= 1.0) pulseALUOut = Math.sin(((P - 0.88) / 0.12) * Math.PI);
       } else if (stepPhase === 'MEMORY') {
-        if (P >= 0.4 && P <= 0.65) pulseRAM = Math.sin(((P - 0.4) / 0.25) * Math.PI);
-        if (P >= 0.88 && P <= 1.0) pulseMDR = Math.sin(((P - 0.88) / 0.12) * Math.PI);
+        const isStore =
+          state.activeBuses.includes('LATCH_TO_MDR') ||
+          Boolean(state.decoded && state.decoded.opcode === OPCODES.MOV_MR);
+        if (isStore) {
+          if (P >= 0.35 && P <= 0.6) pulseMDR = Math.sin(((P - 0.35) / 0.25) * Math.PI);
+          if (P >= 0.7 && P <= 1.0) pulseRAM = Math.sin(((P - 0.7) / 0.3) * Math.PI);
+        } else {
+          if (P >= 0.35 && P <= 0.65) pulseRAM = Math.sin(((P - 0.35) / 0.3) * Math.PI);
+          if (P >= 0.75 && P <= 1.0) pulseMDR = Math.sin(((P - 0.75) / 0.25) * Math.PI);
+        }
       } else if (stepPhase === 'WRITEBACK') {
         if (P >= 0.75 && P <= 1.0) pulseRegs = Math.sin(((P - 0.75) / 0.25) * Math.PI);
       }
@@ -565,32 +579,38 @@ export class DatapathRenderer {
     drawLine(
       [
         { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 27 },
-        { x: b.bMAR.x - 20, y: b.bALUOut.y + 27 },
-        { x: b.bMAR.x - 20, y: b.bMAR.y + 27 },
+        { x: 920, y: b.bALUOut.y + 27 },
+        { x: 920, y: b.bMAR.y + 27 },
         { x: b.bMAR.x, y: b.bMAR.y + 27 },
       ],
       isALUToMARActive,
       memColor
     );
 
-    // 11. MAR -> Data RAM
+    // 11. MAR -> Data RAM (Memory Address Bus routed around to the right of MDR)
+    const bypassX = b.bMDR.x + b.bMDR.w + 20;
     drawLine(
       [
-        { x: b.bMAR.x + b.bMAR.w / 2, y: b.bMAR.y + b.bMAR.h },
-        { x: b.bMAR.x + b.bMAR.w / 2, y: b.bDataRAM.y },
+        { x: b.bMAR.x + b.bMAR.w, y: b.bMAR.y + 27 },
+        { x: bypassX, y: b.bMAR.y + 27 },
+        { x: bypassX, y: b.bDataRAM.y },
       ],
       isALUToMARActive,
       memColor
     );
 
     // 12. Latch B -> MDR (Memory Store data)
-    const isLatchToMDRActive = isAct('LATCH_TO_MDR') || (activeCUPhase === 'MEMORY' && Boolean(state.decoded && state.decoded.opcode === 0x11));
+    const isStoreInst =
+      isAct('LATCH_TO_MDR') ||
+      isAct('MDR_TO_DATA_MEM') ||
+      (activeCUPhase === 'MEMORY' && Boolean(state.decoded && state.decoded.opcode === OPCODES.MOV_MR));
+    const isLatchToMDRActive = isStoreInst;
     drawLine(
       [
         { x: b.bLatchB.x + b.bLatchB.w / 2, y: b.bLatchB.y + b.bLatchB.h },
-        { x: b.bLatchB.x + b.bLatchB.w / 2, y: 440 },
-        { x: b.bMDR.x - 15, y: 440 },
-        { x: b.bMDR.x - 15, y: b.bMDR.y + 27 },
+        { x: b.bLatchB.x + b.bLatchB.w / 2, y: 425 },
+        { x: 932, y: 425 },
+        { x: 932, y: b.bMDR.y + 27 },
         { x: b.bMDR.x, y: b.bMDR.y + 27 },
       ],
       isLatchToMDRActive,
@@ -599,11 +619,17 @@ export class DatapathRenderer {
 
     // 13. MDR <-> Data RAM
     const isRAMDataActive = activeCUPhase === 'MEMORY' || isAct('MEM_TO_MDR') || isAct('MDR_TO_DATA_MEM');
+    const dataConnX = 1015;
     drawLine(
-      [
-        { x: b.bMDR.x + 35, y: b.bMDR.y + b.bMDR.h },
-        { x: b.bMDR.x + 35, y: b.bDataRAM.y },
-      ],
+      isStoreInst
+        ? [
+            { x: dataConnX, y: b.bMDR.y + b.bMDR.h },
+            { x: dataConnX, y: b.bDataRAM.y },
+          ]
+        : [
+            { x: dataConnX, y: b.bDataRAM.y },
+            { x: dataConnX, y: b.bMDR.y + b.bMDR.h },
+          ],
       isRAMDataActive,
       memColor
     );
@@ -623,8 +649,8 @@ export class DatapathRenderer {
 
     drawLine(
       [
-        { x: b.bMDR.x + 70, y: b.bMDR.y + b.bMDR.h },
-        { x: b.bMDR.x + 70, y: 575 },
+        { x: b.bMDR.x + 15, y: b.bMDR.y + b.bMDR.h },
+        { x: b.bMDR.x + 15, y: 575 },
         { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: 575 },
         { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: b.bRegs.y + b.bRegs.h },
       ],
@@ -783,23 +809,80 @@ export class DatapathRenderer {
           }
         }
       } else if (activeCUPhase === 'MEMORY') {
-        const pMem = P / 0.48;
-        if (pMem >= 0 && pMem <= 1) {
-          const pathMAR: Point2D[] = [
-            { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 27 },
-            { x: b.bMAR.x - 20, y: b.bALUOut.y + 27 },
-            { x: b.bMAR.x - 20, y: b.bMAR.y + 27 },
-            { x: b.bMAR.x, y: b.bMAR.y + 27 },
-          ];
-          ParticleSystem.renderPacket(ctx, pathMAR, pMem, memCol, memGlow, toHex32(to.mar), 3);
-        }
+        const bypassX = b.bMDR.x + b.bMDR.w + 20;
+        const dataConnX = 1015;
+        const isStore =
+          state.activeBuses.includes('LATCH_TO_MDR') ||
+          state.activeBuses.includes('MDR_TO_DATA_MEM') ||
+          Boolean(state.decoded && state.decoded.opcode === OPCODES.MOV_MR);
 
-        if (state.activeBuses.includes('MEM_TO_MDR')) {
+        if (isStore) {
+          // Store Operation Stage 1: ALU_Out -> MAR (Target Address) & Latch B -> MDR (Data)
+          const pStage1 = P / 0.45;
+          if (pStage1 >= 0 && pStage1 <= 1) {
+            const pathMAR: Point2D[] = [
+              { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 27 },
+              { x: 920, y: b.bALUOut.y + 27 },
+              { x: 920, y: b.bMAR.y + 27 },
+              { x: b.bMAR.x, y: b.bMAR.y + 27 },
+            ];
+            ParticleSystem.renderPacket(ctx, pathMAR, pStage1, memCol, memGlow, toHex32(to.mar), 3);
+
+            const pathLatchToMDR: Point2D[] = [
+              { x: b.bLatchB.x + b.bLatchB.w / 2, y: b.bLatchB.y + b.bLatchB.h },
+              { x: b.bLatchB.x + b.bLatchB.w / 2, y: 425 },
+              { x: 932, y: 425 },
+              { x: 932, y: b.bMDR.y + 27 },
+              { x: b.bMDR.x, y: b.bMDR.y + 27 },
+            ];
+            ParticleSystem.renderPacket(ctx, pathLatchToMDR, pStage1, memCol, memGlow, toHex32(to.mdr), 4);
+          }
+
+          // Store Operation Stage 2: MAR -> RAM (Address around right of MDR) & MDR -> RAM (Data)
+          const pStage2 = (P - 0.48) / 0.45;
+          if (pStage2 >= 0 && pStage2 <= 1) {
+            const pathMARToRAM: Point2D[] = [
+              { x: b.bMAR.x + b.bMAR.w, y: b.bMAR.y + 27 },
+              { x: bypassX, y: b.bMAR.y + 27 },
+              { x: bypassX, y: b.bDataRAM.y },
+            ];
+            ParticleSystem.renderPacket(ctx, pathMARToRAM, pStage2, memCol, memGlow, toHex32(to.mar), 3);
+
+            const pathMDRToRAM: Point2D[] = [
+              { x: dataConnX, y: b.bMDR.y + b.bMDR.h },
+              { x: dataConnX, y: b.bDataRAM.y },
+            ];
+            ParticleSystem.renderPacket(ctx, pathMDRToRAM, pStage2, memCol, memGlow, toHex32(to.mdr), 4);
+          }
+        } else {
+          // Load Operation Stage 1: ALU_Out -> MAR (Target Address) & MAR -> RAM (Address around right of MDR)
+          const pMem = P / 0.45;
+          if (pMem >= 0 && pMem <= 1) {
+            const pathMAR: Point2D[] = [
+              { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 27 },
+              { x: 920, y: b.bALUOut.y + 27 },
+              { x: 920, y: b.bMAR.y + 27 },
+              { x: b.bMAR.x, y: b.bMAR.y + 27 },
+            ];
+            ParticleSystem.renderPacket(ctx, pathMAR, pMem, memCol, memGlow, toHex32(to.mar), 3);
+          }
+
+          const pAddrRAM = (P - 0.2) / 0.35;
+          if (pAddrRAM >= 0 && pAddrRAM <= 1) {
+            const pathMARToRAM: Point2D[] = [
+              { x: b.bMAR.x + b.bMAR.w, y: b.bMAR.y + 27 },
+              { x: bypassX, y: b.bMAR.y + 27 },
+              { x: bypassX, y: b.bDataRAM.y },
+            ];
+            ParticleSystem.renderPacket(ctx, pathMARToRAM, pAddrRAM, memCol, memGlow, toHex32(to.mar), 3);
+          }
+
+          // Load Operation Stage 2: Data RAM -> MDR (Data read)
           const pMDR = (P - 0.5) / 0.42;
           if (pMDR >= 0 && pMDR <= 1) {
             const pathRead: Point2D[] = [
-              { x: b.bDataRAM.x + 35, y: b.bDataRAM.y },
-              { x: b.bMDR.x + 35, y: b.bMDR.y + b.bMDR.h },
+              { x: dataConnX, y: b.bDataRAM.y },
+              { x: dataConnX, y: b.bMDR.y + b.bMDR.h },
             ];
             ParticleSystem.renderPacket(ctx, pathRead, pMDR, memCol, memGlow, toHex32(to.mdr), 4);
           }
@@ -817,8 +900,8 @@ export class DatapathRenderer {
             ParticleSystem.renderPacket(ctx, pathWB, pWB, wbCol, wbGlow, toHex32(to.aluOut), 5);
           } else {
             const pathWB: Point2D[] = [
-              { x: b.bMDR.x + 70, y: b.bMDR.y + b.bMDR.h },
-              { x: b.bMDR.x + 70, y: 575 },
+              { x: b.bMDR.x + 15, y: b.bMDR.y + b.bMDR.h },
+              { x: b.bMDR.x + 15, y: 575 },
               { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: 575 },
               { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: b.bRegs.y + b.bRegs.h },
             ];
@@ -912,25 +995,50 @@ export class DatapathRenderer {
       ];
       renderFlow(pathFlags, execCol, execGlow, 1);
     } else if (activeCUPhase === 'MEMORY') {
+      const bypassX = b.bMDR.x + b.bMDR.w + 20;
+      const dataConnX = 1015;
+      const isStore =
+        state.activeBuses.includes('LATCH_TO_MDR') ||
+        state.activeBuses.includes('MDR_TO_DATA_MEM') ||
+        Boolean(state.decoded && state.decoded.opcode === OPCODES.MOV_MR);
+
       const pathMAR: Point2D[] = [
         { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 27 },
-        { x: b.bMAR.x - 20, y: b.bALUOut.y + 27 },
-        { x: b.bMAR.x - 20, y: b.bMAR.y + 27 },
+        { x: 920, y: b.bALUOut.y + 27 },
+        { x: 920, y: b.bMAR.y + 27 },
         { x: b.bMAR.x, y: b.bMAR.y + 27 },
       ];
       renderFlow(pathMAR, memCol, memGlow, 2);
 
-      const pathRAM: Point2D[] = [
-        { x: b.bMAR.x + b.bMAR.w / 2, y: b.bMAR.y + b.bMAR.h },
-        { x: b.bMAR.x + b.bMAR.w / 2, y: b.bDataRAM.y },
+      const pathMARToRAM: Point2D[] = [
+        { x: b.bMAR.x + b.bMAR.w, y: b.bMAR.y + 27 },
+        { x: bypassX, y: b.bMAR.y + 27 },
+        { x: bypassX, y: b.bDataRAM.y },
       ];
-      renderFlow(pathRAM, memCol, memGlow, 2);
+      renderFlow(pathMARToRAM, memCol, memGlow, 2);
 
-      const pathMDR: Point2D[] = [
-        { x: b.bMDR.x + 35, y: b.bMDR.y + b.bMDR.h },
-        { x: b.bMDR.x + 35, y: b.bDataRAM.y },
-      ];
-      renderFlow(pathMDR, memCol, memGlow, 2);
+      if (isStore) {
+        const pathLatchToMDR: Point2D[] = [
+          { x: b.bLatchB.x + b.bLatchB.w / 2, y: b.bLatchB.y + b.bLatchB.h },
+          { x: b.bLatchB.x + b.bLatchB.w / 2, y: 425 },
+          { x: 932, y: 425 },
+          { x: 932, y: b.bMDR.y + 27 },
+          { x: b.bMDR.x, y: b.bMDR.y + 27 },
+        ];
+        renderFlow(pathLatchToMDR, memCol, memGlow, 2);
+
+        const pathMDRToRAM: Point2D[] = [
+          { x: dataConnX, y: b.bMDR.y + b.bMDR.h },
+          { x: dataConnX, y: b.bDataRAM.y },
+        ];
+        renderFlow(pathMDRToRAM, memCol, memGlow, 2);
+      } else {
+        const pathRAMToMDR: Point2D[] = [
+          { x: dataConnX, y: b.bDataRAM.y },
+          { x: dataConnX, y: b.bMDR.y + b.bMDR.h },
+        ];
+        renderFlow(pathRAMToMDR, memCol, memGlow, 2);
+      }
     } else if (activeCUPhase === 'WRITEBACK') {
       if (!state.activeBuses.includes('MDR_TO_REG_WB')) {
         const pathWB: Point2D[] = [
@@ -942,8 +1050,8 @@ export class DatapathRenderer {
         renderFlow(pathWB, wbCol, wbGlow, 3);
       } else {
         const pathWB: Point2D[] = [
-          { x: b.bMDR.x + 70, y: b.bMDR.y + b.bMDR.h },
-          { x: b.bMDR.x + 70, y: 575 },
+          { x: b.bMDR.x + 15, y: b.bMDR.y + b.bMDR.h },
+          { x: b.bMDR.x + 15, y: 575 },
           { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: 575 },
           { x: b.bRegs.x + b.bRegs.w / 2 - 25, y: b.bRegs.y + b.bRegs.h },
         ];
@@ -1035,7 +1143,7 @@ export class DatapathRenderer {
     ctx.font = '10.5px "JetBrains Mono", monospace';
     ctx.fillText('Addr: ' + toHex32(addr), box.x + 10, box.y + 38);
 
-    ctx.fillStyle = active || pulse > 0 ? '#a7f3d0' : THEME.textAccent;
+    ctx.fillStyle = active || pulse > 0 ? '#a7f3d0' : (word !== 0 ? THEME.textAccent : THEME.textMuted);
     ctx.font = 'bold 12px "JetBrains Mono", monospace';
     ctx.fillText('Word: ' + toHex32(word), box.x + 10, box.y + 62);
   }
@@ -1051,13 +1159,13 @@ export class DatapathRenderer {
   ): void {
     this.drawCard(ctx, box, 'Instruction Register (IR)', active || pulse > 0, activeColor, pulse);
 
-    ctx.fillStyle = THEME.textPrimary;
+    ctx.fillStyle = active || val !== 0 ? THEME.textPrimary : THEME.textMuted;
     ctx.font = '13px "JetBrains Mono", monospace';
     ctx.fillText(toHex32(val), box.x + 10, box.y + 40);
 
     ctx.fillStyle = active ? activeColor : (decoded ? THEME.phases.DECODE.primary : THEME.textMuted);
     ctx.font = 'bold 11.5px "JetBrains Mono", monospace';
-    ctx.fillText(decoded ? decoded.assemblyString : 'NOP / IDLE', box.x + 10, box.y + 64);
+    ctx.fillText(decoded ? decoded.assemblyString : (val !== 0 ? 'FETCHED WORD' : 'NOP / IDLE'), box.x + 10, box.y + 64);
   }
 
   /**
@@ -1362,16 +1470,16 @@ export class DatapathRenderer {
       ADDER: { x: 50, y: 15, w: 105, h: 42 },
       CODE_MEM: { x: 245, y: 70, w: 160, h: 85 },
       IR: { x: 465, y: 70, w: 185, h: 85 },
-      CU: { x: 695, y: 45, w: 365, h: 115 },
+      CU: { x: 695, y: 45, w: 375, h: 115 },
       REGS: { x: 160, y: 210, w: 220, h: 265 },
       LATCH_A: { x: 430, y: 235, w: 120, h: 55 },
       LATCH_B: { x: 430, y: 315, w: 120, h: 55 },
       ALU: { x: 600, y: 245, w: 140, h: 140 },
       FLAGS: { x: 790, y: 225, w: 120, h: 70 },
       ALU_OUT: { x: 790, y: 320, w: 120, h: 55 },
-      MAR: { x: 960, y: 215, w: 105, h: 55 },
-      MDR: { x: 960, y: 295, w: 105, h: 55 },
-      DATA_RAM: { x: 940, y: 395, w: 145, h: 165 },
+      MAR: { x: 945, y: 215, w: 105, h: 55 },
+      MDR: { x: 945, y: 295, w: 105, h: 55 },
+      DATA_RAM: { x: 980, y: 395, w: 140, h: 165 },
     };
 
     for (const [id, box] of Object.entries(boxes)) {

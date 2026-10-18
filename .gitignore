@@ -7,10 +7,19 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Frontend dependencies & build outputs
 node_modules
 dist
 dist-ssr
 *.local
+
+# Rust / Cargo / Tauri build outputs & generated schemas
+target/
+**/target/
+src-tauri/target/
+src-tauri/gen/schemas/
+src-tauri/WixTools/
+saved_programs/
 
 # Editor directories and files
 .vscode/*

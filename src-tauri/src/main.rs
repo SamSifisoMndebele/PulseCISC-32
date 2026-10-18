@@ -54,6 +54,12 @@ fn rust_run_turbo_benchmark(
 }
 
 #[tauri::command]
+fn rust_read_memory_page(offset: usize, length: usize, state: State<'_, AppState>) -> Vec<u8> {
+    let cpu = state.cpu.lock().unwrap();
+    cpu.read_memory_slice(offset, length)
+}
+
+#[tauri::command]
 fn rust_save_asm_file(filename: String, content: String) -> Result<String, String> {
     let mut dir = std::env::current_dir().map_err(|e| e.to_string())?;
     dir.push("saved_programs");
@@ -61,7 +67,13 @@ fn rust_save_asm_file(filename: String, content: String) -> Result<String, Strin
 
     let safe_name: String = filename
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let final_name = if safe_name.ends_with(".asm") {
         safe_name
@@ -84,6 +96,7 @@ fn main() {
             rust_engine_info,
             rust_analyze_psi,
             rust_run_turbo_benchmark,
+            rust_read_memory_page,
             rust_save_asm_file,
         ])
         .run(tauri::generate_context!())

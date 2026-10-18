@@ -68,6 +68,12 @@ impl NativeCpuCore {
         res
     }
 
+    pub fn read_memory_slice(&self, offset: usize, length: usize) -> Vec<u8> {
+        let start = offset.min(self.memory.len());
+        let end = (start + length).min(self.memory.len());
+        self.memory[start..end].to_vec()
+    }
+
     /// Executes a native hardware-speed benchmark & stress test on the 32-bit Rust ALU/Register file
     pub fn run_native_alu_benchmark(&mut self, iterations: u64) -> NativeTurboResult {
         let start = Instant::now();
@@ -83,12 +89,14 @@ impl NativeCpuCore {
             edx ^= eax.wrapping_mul(3);
         }
 
+        // Finalize hardware flags through native ALU methods
+        eax = self.alu_add(eax, 0);
+        ebx = self.alu_sub(ebx, 0);
+
         self.registers[0] = eax;
         self.registers[1] = ebx;
         self.registers[2] = ecx;
         self.registers[3] = edx;
-        self.flags.zf = eax == 0;
-        self.flags.sf = (eax & 0x8000_0000) != 0;
         self.total_cycles = self.total_cycles.wrapping_add(iterations * 4);
 
         let elapsed_us = start.elapsed().as_micros().max(1);

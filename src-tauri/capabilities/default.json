@@ -1,0 +1,9 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default permissions for PulseCISC-32 Studio",
+  "windows": ["main"],
+  "permissions": [
+    "core:default"
+  ]
+}

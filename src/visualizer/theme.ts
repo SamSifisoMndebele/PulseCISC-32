@@ -1,0 +1,99 @@
+// PulseCISC-32 Visual Theme & Phase Palette (Supports Device Dark & Light Modes)
+
+const DARK_PALETTE = {
+  isLight: false,
+  bg: '#0a0d14',
+  canvasBg: '#0d111a',
+  gridLines: 'rgba(255, 255, 255, 0.03)',
+  cardBg: 'rgba(18, 24, 38, 0.85)',
+  activeCardBg: 'rgba(15, 23, 42, 0.95)',
+  cardBorder: 'rgba(255, 255, 255, 0.08)',
+  textPrimary: '#f1f5f9',
+  textSecondary: '#94a3b8',
+  textMuted: '#64748b',
+  textAccent: '#38bdf8',
+  packetBadgeBg: 'rgba(10, 15, 26, 0.92)',
+  busDefault: '#1e293b',
+  busInactive: 'rgba(255, 255, 255, 0.12)',
+  busArrowDefault: '#3b4d66',
+};
+
+const LIGHT_PALETTE = {
+  isLight: true,
+  bg: '#f1f5f9',
+  canvasBg: '#f8fafc',
+  gridLines: 'rgba(15, 23, 42, 0.045)',
+  cardBg: 'rgba(255, 255, 255, 0.94)',
+  activeCardBg: 'rgba(255, 255, 255, 0.99)',
+  cardBorder: 'rgba(15, 23, 42, 0.14)',
+  textPrimary: '#0f172a',
+  textSecondary: '#334155',
+  textMuted: '#64748b',
+  textAccent: '#0284c7',
+  packetBadgeBg: 'rgba(255, 255, 255, 0.95)',
+  busDefault: '#cbd5e1',
+  busInactive: 'rgba(15, 23, 42, 0.18)',
+  busArrowDefault: '#94a3b8',
+};
+
+export const THEME = {
+  ...DARK_PALETTE,
+
+  // Phase Specific Colors & Glows
+  phases: {
+    FETCH: {
+      name: 'Fetch',
+      primary: '#10b981', // Emerald
+      glow: 'rgba(16, 185, 129, 0.5)',
+      soft: 'rgba(16, 185, 129, 0.15)',
+      description: 'MAR <- PC; IR <- MEM[PC]; PC <- PC + 4',
+    },
+    DECODE: {
+      name: 'Decode',
+      primary: '#3b82f6', // Electric Blue
+      glow: 'rgba(59, 130, 246, 0.5)',
+      soft: 'rgba(59, 130, 246, 0.15)',
+      description: 'Decode IR; Read R[rs] & R[rt] into Latches A & B',
+    },
+    EXECUTE: {
+      name: 'Execute',
+      primary: '#ef4444', // Crimson Red
+      glow: 'rgba(239, 68, 68, 0.5)',
+      soft: 'rgba(239, 68, 68, 0.15)',
+      description: 'ALU calculation / Branch evaluation / Target calc',
+    },
+    MEMORY: {
+      name: 'Memory',
+      primary: '#a855f7', // Neon Purple / Violet
+      glow: 'rgba(168, 85, 247, 0.5)',
+      soft: 'rgba(168, 85, 247, 0.15)',
+      description: 'Data RAM Read (LW) / Write (SW) via MAR and MDR',
+    },
+    WRITEBACK: {
+      name: 'Writeback',
+      primary: '#f59e0b', // Amber / Warm Gold
+      glow: 'rgba(245, 158, 11, 0.5)',
+      soft: 'rgba(245, 158, 11, 0.15)',
+      description: 'Write result (ALU_Out or MDR) into Destination Register',
+    },
+    HALTED: {
+      name: 'Halted',
+      primary: '#e11d48', // Rose Red
+      glow: 'rgba(225, 29, 72, 0.6)',
+      soft: 'rgba(225, 29, 72, 0.2)',
+      description: 'CPU clock halted.',
+    },
+  },
+
+  // Bus Line Dimensions
+  busWidth: 2.5,
+  activeBusWidth: 3.5,
+  arrowHeadLength: 11.5,
+  activeArrowHeadLength: 13,
+};
+
+export function setVisualizerTheme(isLight: boolean): void {
+  const palette = isLight ? LIGHT_PALETTE : DARK_PALETTE;
+  Object.assign(THEME, palette);
+}
+

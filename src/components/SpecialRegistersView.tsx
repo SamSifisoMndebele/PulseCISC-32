@@ -40,41 +40,53 @@ export const SpecialRegistersView: React.FC<SpecialRegistersViewProps> = ({
           <span>EFLAGS</span>
           <span className="text-[10px] text-slate-500 font-normal">Condition Codes</span>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-4 gap-2">
           {/* ZF */}
           <div
-            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs ${
+            className={`flex items-center justify-between px-2 py-1.5 rounded-lg border text-xs ${
               flags.zf
                 ? 'bg-emerald-950/40 border-emerald-500/80 text-emerald-300 shadow-sm shadow-emerald-500/10'
                 : 'bg-slate-900/60 border-slate-800 text-slate-500'
             }`}
           >
             <span className="font-bold">ZF</span>
-            <span className="font-mono text-xs">{flags.zf ? '1 (Zero)' : '0'}</span>
+            <span className="font-mono text-[11px]">{flags.zf ? '1 (Zero)' : '0'}</span>
           </div>
 
           {/* SF */}
           <div
-            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs ${
+            className={`flex items-center justify-between px-2 py-1.5 rounded-lg border text-xs ${
               flags.sf
                 ? 'bg-rose-950/40 border-rose-500/80 text-rose-300 shadow-sm shadow-rose-500/10'
                 : 'bg-slate-900/60 border-slate-800 text-slate-500'
             }`}
           >
             <span className="font-bold">SF</span>
-            <span className="font-mono text-xs">{flags.sf ? '1 (Neg)' : '0'}</span>
+            <span className="font-mono text-[11px]">{flags.sf ? '1 (Neg)' : '0'}</span>
           </div>
 
           {/* OF */}
           <div
-            className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg border text-xs ${
+            className={`flex items-center justify-between px-2 py-1.5 rounded-lg border text-xs ${
               flags.of
                 ? 'bg-amber-950/40 border-amber-500/80 text-amber-300 shadow-sm shadow-amber-500/10'
                 : 'bg-slate-900/60 border-slate-800 text-slate-500'
             }`}
           >
             <span className="font-bold">OF</span>
-            <span className="font-mono text-xs">{flags.of ? '1 (Ovf)' : '0'}</span>
+            <span className="font-mono text-[11px]">{flags.of ? '1 (Ovf)' : '0'}</span>
+          </div>
+
+          {/* CF */}
+          <div
+            className={`flex items-center justify-between px-2 py-1.5 rounded-lg border text-xs ${
+              flags.cf
+                ? 'bg-purple-950/40 border-purple-500/80 text-purple-300 shadow-sm shadow-purple-500/10'
+                : 'bg-slate-900/60 border-slate-800 text-slate-500'
+            }`}
+          >
+            <span className="font-bold">CF</span>
+            <span className="font-mono text-[11px]">{flags.cf ? '1 (Cry)' : '0'}</span>
           </div>
         </div>
       </div>

@@ -35,7 +35,7 @@ interface DisplaySnapshot {
   aluOut: number;
   mdr: number;
   decoded: DecodedInstruction | null;
-  flags: { zf: boolean; sf: boolean; of: boolean };
+  flags: { zf: boolean; sf: boolean; of: boolean; cf: boolean };
   registers: number[];
 }
 
@@ -127,7 +127,7 @@ export class DatapathRenderer {
     const bLatchB: ComponentBounds = { x: 430, y: 315, w: 120, h: 55, title: 'Latch B (Src)' };
 
     const bALU: ComponentBounds = { x: 600, y: 245, w: 140, h: 140, title: 'ALU 32-Bit' };
-    const bFlags: ComponentBounds = { x: 790, y: 225, w: 120, h: 70, title: 'EFLAGS (ZF, SF, OF)' };
+    const bFlags: ComponentBounds = { x: 790, y: 225, w: 125, h: 70, title: 'EFLAGS (ZF, SF, OF, CF)' };
     const bALUOut: ComponentBounds = { x: 790, y: 320, w: 120, h: 55, title: 'ALU_Out Latch' };
 
     const bMAR: ComponentBounds = { x: 945, y: 215, w: 105, h: 55, title: 'MAR (Address)' };
@@ -223,7 +223,11 @@ export class DatapathRenderer {
       } else if (stepPhase === 'MEMORY') {
         const isStore =
           state.activeBuses.includes('LATCH_TO_MDR') ||
-          Boolean(state.decoded && state.decoded.opcode === OPCODES.MOV_MR);
+          Boolean(
+            state.decoded &&
+              (state.decoded.opcode === OPCODES.MOV_MR ||
+                state.decoded.opcode === OPCODES.MOVB_MR)
+          );
         if (isStore) {
           if (P >= 0.35 && P <= 0.6) pulseMDR = Math.sin(((P - 0.35) / 0.25) * Math.PI);
           if (P >= 0.7 && P <= 1.0) pulseRAM = Math.sin(((P - 0.7) / 0.3) * Math.PI);
@@ -630,7 +634,12 @@ export class DatapathRenderer {
     const isStoreInst =
       isAct('LATCH_TO_MDR') ||
       isAct('MDR_TO_DATA_MEM') ||
-      (activeCUPhase === 'MEMORY' && Boolean(state.decoded && state.decoded.opcode === OPCODES.MOV_MR));
+      (activeCUPhase === 'MEMORY' &&
+        Boolean(
+          state.decoded &&
+            (state.decoded.opcode === OPCODES.MOV_MR ||
+              state.decoded.opcode === OPCODES.MOVB_MR)
+        ));
     const isLatchToMDRActive = isStoreInst;
     drawLine(
       [
@@ -841,7 +850,11 @@ export class DatapathRenderer {
         const isStore =
           state.activeBuses.includes('LATCH_TO_MDR') ||
           state.activeBuses.includes('MDR_TO_DATA_MEM') ||
-          Boolean(state.decoded && state.decoded.opcode === OPCODES.MOV_MR);
+          Boolean(
+            state.decoded &&
+              (state.decoded.opcode === OPCODES.MOV_MR ||
+                state.decoded.opcode === OPCODES.MOVB_MR)
+          );
 
         if (isStore) {
           // Store Operation Stage 1: ALU_Out -> MAR (Target Address) & Latch B -> MDR (Data)
@@ -1027,7 +1040,11 @@ export class DatapathRenderer {
       const isStore =
         state.activeBuses.includes('LATCH_TO_MDR') ||
         state.activeBuses.includes('MDR_TO_DATA_MEM') ||
-        Boolean(state.decoded && state.decoded.opcode === OPCODES.MOV_MR);
+        Boolean(
+          state.decoded &&
+            (state.decoded.opcode === OPCODES.MOV_MR ||
+              state.decoded.opcode === OPCODES.MOVB_MR)
+        );
 
       const pathMAR: Point2D[] = [
         { x: b.bALUOut.x + b.bALUOut.w, y: b.bALUOut.y + 27 },
@@ -1424,7 +1441,7 @@ export class DatapathRenderer {
   private drawFlags(
     ctx: CanvasRenderingContext2D,
     box: ComponentBounds,
-    flags: { zf: boolean; sf: boolean; of: boolean },
+    flags: { zf: boolean; sf: boolean; of: boolean; cf: boolean },
     active: boolean,
     activeColor: string
   ): void {
@@ -1444,9 +1461,10 @@ export class DatapathRenderer {
       ctx.fillText(name, x + 5, y + 13);
     };
 
-    drawFlagPill(box.x + 8, box.y + 32, 'ZF', flags.zf);
-    drawFlagPill(box.x + 40, box.y + 32, 'SF', flags.sf);
-    drawFlagPill(box.x + 72, box.y + 32, 'OF', flags.of);
+    drawFlagPill(box.x + 6, box.y + 32, 'ZF', flags.zf);
+    drawFlagPill(box.x + 35, box.y + 32, 'SF', flags.sf);
+    drawFlagPill(box.x + 64, box.y + 32, 'OF', flags.of);
+    drawFlagPill(box.x + 93, box.y + 32, 'CF', flags.cf);
   }
 
   private drawDataRAM(

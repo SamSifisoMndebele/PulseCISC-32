@@ -56,56 +56,72 @@ export const CheatsheetModal: React.FC<CheatsheetModalProps> = ({ isOpen, onClos
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase text-[11px] tracking-wider">
               <Layers className="w-4 h-4" />
-              <span>2-Operand CISC Instruction Set</span>
+              <span>Full CISC / x86 Architecture Instruction Set</span>
             </div>
-            <div className="space-y-1.5 bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-[11px]">
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">MOV</span>
-                <span className="text-slate-300">Transfer data: <code className="text-slate-200">MOV EAX, 10</code>, <code className="text-slate-200">MOV EAX, EBX</code>, <code className="text-slate-200">MOV EAX, [EBX + 4]</code>, <code className="text-slate-200">MOV [EBX], EAX</code></span>
+            <div className="space-y-2 bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-[11px]">
+              {/* Stack & Subroutines */}
+              <div className="border-b border-slate-800/80 pb-2 mb-2">
+                <span className="text-amber-400 font-bold block mb-1">Stack, Calling Conventions & Functions</span>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
+                  <div><span className="text-emerald-300 font-bold">PUSH src</span>: Decrement ESP (-4), store in [ESP] (<code className="text-slate-200">PUSH EAX</code>, <code className="text-slate-200">PUSH 42</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">POP dest</span>: Read from [ESP], increment ESP (+4) (<code className="text-slate-200">POP EBX</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">CALL label</span>: Push return EIP to stack and jump to function (<code className="text-slate-200">CALL factorial</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">RET</span>: Pop return address from stack into EIP (<code className="text-slate-200">RET</code>)</div>
+                </div>
               </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">MOVH</span>
-                <span className="text-slate-300">Load upper 16-bits: <code className="text-slate-200">MOVH EAX, 0x1234</code> (useful for loading 32-bit constants)</span>
+
+              {/* Data Transfer & Pointers */}
+              <div className="border-b border-slate-800/80 pb-2 mb-2">
+                <span className="text-sky-400 font-bold block mb-1">Data Transfer, Pointers & Byte Access</span>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
+                  <div><span className="text-emerald-300 font-bold">MOV</span>: Transfer 32/16-bit (<code className="text-slate-200">MOV EAX, 10</code>, <code className="text-slate-200">MOV [EBX + 4], EAX</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">MOVB</span>: 8-bit Byte load/store (<code className="text-slate-200">MOV AL, BYTE [ESI]</code>, <code className="text-slate-200">MOV BYTE [EDI], AL</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">LEA</span>: Load Effective Address without RAM access (<code className="text-slate-200">LEA EBX, [EBP - 8]</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">XCHG</span>: Atomic register swap (<code className="text-slate-200">XCHG EAX, EBX</code>)</div>
+                </div>
               </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">ADD</span>
-                <span className="text-slate-300">Addition: <code className="text-slate-200">ADD EAX, EBX</code> or <code className="text-slate-200">ADD EAX, 10</code> (Updates ZF, SF, OF)</span>
+
+              {/* Arithmetic */}
+              <div className="border-b border-slate-800/80 pb-2 mb-2">
+                <span className="text-emerald-400 font-bold block mb-1">Arithmetic & Multi-Precision</span>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
+                  <div><span className="text-emerald-300 font-bold">ADD / SUB</span>: Add / Subtract with flags (<code className="text-slate-200">ADD EAX, 5</code>, <code className="text-slate-200">SUB ECX, EBX</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">ADC / SBB</span>: Add/Sub with Carry/Borrow (<code className="text-slate-200">ADC EDX, 0</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">INC / DEC</span>: Increment / Decrement by 1 (preserves CF) (<code className="text-slate-200">INC ECX</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">NEG</span>: Two's complement negate (<code className="text-slate-200">NEG EAX</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">MUL / IMUL</span>: Unsigned/Signed multiply (<code className="text-slate-200">MUL EBX</code>, <code className="text-slate-200">IMUL EAX, 10</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">DIV / IDIV</span>: Unsigned/Signed divide (<code className="text-slate-200">DIV EBX</code>: EAX=quot, EDX=rem)</div>
+                </div>
               </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">SUB</span>
-                <span className="text-slate-300">Subtraction: <code className="text-slate-200">SUB EAX, 5</code> (Updates ZF, SF, OF)</span>
+
+              {/* Bitwise, Shifts & Tests */}
+              <div className="border-b border-slate-800/80 pb-2 mb-2">
+                <span className="text-purple-400 font-bold block mb-1">Logic, Shifts & Bit Twiddling</span>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
+                  <div><span className="text-emerald-300 font-bold">AND / OR / XOR</span>: Bitwise logic (<code className="text-slate-200">XOR EAX, EAX</code>, <code className="text-slate-200">AND EAX, 0xFF</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">NOT</span>: One's complement bit inversion (<code className="text-slate-200">NOT EAX</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">TEST</span>: Non-destructive AND, sets ZF & SF (<code className="text-slate-200">TEST EAX, EAX</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">CMP</span>: Non-destructive SUB, updates EFLAGS (<code className="text-slate-200">CMP EAX, 100</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">SHL / SAL</span>: Shift Left by imm or CL (<code className="text-slate-200">SHL EAX, 2</code> multiplies by 4)</div>
+                  <div><span className="text-emerald-300 font-bold">SHR / SAR</span>: Logical / Arithmetic Shift Right (<code className="text-slate-200">SAR EAX, 1</code> divides signed by 2)</div>
+                  <div><span className="text-emerald-300 font-bold">ROL / ROR</span>: Rotate bits left / right (<code className="text-slate-200">ROL EAX, 4</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">CLC / STC / CMC</span>: Clear / Set / Complement Carry Flag (CF)</div>
+                </div>
               </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">AND / OR</span>
-                <span className="text-slate-300">Bitwise logic: <code className="text-slate-200">AND EAX, 0xFF</code>, <code className="text-slate-200">OR EAX, EBX</code></span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">XOR</span>
-                <span className="text-slate-300">Bitwise XOR: <code className="text-slate-200">XOR EAX, EAX</code> (Zeroes register and sets ZF=1)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">CMP</span>
-                <span className="text-slate-300">Compare: <code className="text-slate-200">CMP ECX, 0</code> (Computes ECX - 0, updates EFLAGS without modifying ECX)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">JE / JNE</span>
-                <span className="text-slate-300">Conditional jumps: <code className="text-slate-200">JE loop_end</code> (jump if ZF=1), <code className="text-slate-200">JNE loop_start</code> (jump if ZF=0)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">PRINT</span>
-                <span className="text-slate-300">Educational print: <code className="text-slate-200">PRINT EAX</code> (prints register decimal & hex), <code className="text-slate-200">PRINT 42</code> (prints immediate) to Console</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">INT 0x80</span>
-                <span className="text-slate-300">Authentic System Call: <code className="text-slate-200">EAX=4</code> (sys_write: EBX=fd, ECX=buf, EDX=len), <code className="text-slate-200">EAX=1</code> (sys_exit: EBX=code), <code className="text-slate-200">EAX=5</code> (sys_print_int), <code className="text-slate-200">EAX=11</code> (sys_print_char)</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">DB / DW</span>
-                <span className="text-slate-300">Data Directives (stored in Data RAM at 0x2000+): <code className="text-slate-200">msg: DB "Hello\n", 0</code>, <code className="text-slate-200">nums: DB 1, 2, 3</code></span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-emerald-300 font-bold min-w-[70px]">JMP / HLT</span>
-                <span className="text-slate-300">Unconditional jump: <code className="text-slate-200">JMP main</code>; Halt processor: <code className="text-slate-200">HLT</code></span>
+
+              {/* Control Flow */}
+              <div>
+                <span className="text-rose-400 font-bold block mb-1">Control Flow & Conditionals</span>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
+                  <div><span className="text-emerald-300 font-bold">JMP</span>: Unconditional jump (<code className="text-slate-200">JMP main</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">LOOP</span>: Decrement ECX, branch if ECX != 0 (<code className="text-slate-200">LOOP loop_start</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">JE / JZ</span>: Jump if Equal / Zero (ZF=1)</div>
+                  <div><span className="text-emerald-300 font-bold">JNE / JNZ</span>: Jump if Not Equal / Non-Zero (ZF=0)</div>
+                  <div><span className="text-emerald-300 font-bold">JL / JLE / JG / JGE</span>: Signed comparisons (<code className="text-slate-200">JL target</code>, <code className="text-slate-200">JG target</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">JB / JBE / JA / JAE</span>: Unsigned comparisons using Carry (<code className="text-slate-200">JB target</code>, <code className="text-slate-200">JA target</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">JS / JNS / JO / JNO</span>: Flag checks: Sign negative, Overflow (<code className="text-slate-200">JS negative</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">NOP / HLT</span>: No-operation / Halt processor clock</div>
+                </div>
               </div>
             </div>
           </div>

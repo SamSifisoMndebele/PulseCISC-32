@@ -10,7 +10,14 @@ import type {
   RegisterId,
   TraceRecord,
 } from './types';
-import { decodeInstruction, toHex32, toUint32, toInt32, OPCODES, REGISTER_NAMES, SUB_REGISTER_NAMES } from './isa';
+import {
+  decodeInstruction,
+  toHex32,
+  toUint32,
+  toInt32,
+  OPCODES,
+  REGISTER_NAMES,
+} from './isa';
 import { Memory } from './memory';
 import { ALU } from './alu';
 import type { ALUOperation } from './alu';
@@ -39,6 +46,7 @@ export class CPU {
     zf: false,
     sf: false,
     of: false,
+    cf: false,
   };
 
   // State Machine
@@ -89,7 +97,7 @@ export class CPU {
     // ESP (Stack Pointer) defaults to top of Data Segment (e.g. 0xFFFC for 64KB)
     this.registers[7] = this.defaultEsp ?? (this.memory.getDataEnd() & ~0x3);
 
-    this.flags = { zf: false, sf: false, of: false };
+    this.flags = { zf: false, sf: false, of: false, cf: false };
     this.phase = 'HALTED';
     this.nextPhase = 'FETCH';
     this.stepPhase = 'HALTED';
@@ -118,19 +126,39 @@ export class CPU {
   }
 
   /**
-   * Reads from a register, optionally taking only the lower 16 bits if is16Bit is true.
+   * Reads from a register, supporting 32-bit, 16-bit, and 8-bit sub-registers.
    */
-  public readRegister(regId: RegisterId, is16Bit: boolean = false): number {
+  public readRegister(
+    regId: RegisterId,
+    is16Bit: boolean = false,
+    is8Bit: boolean = false,
+    is8BitHigh: boolean = false
+  ): number {
     const full = this.registers[regId];
-    return is16Bit ? (full & 0xffff) : full;
+    if (is8BitHigh) return (full >>> 8) & 0xff;
+    if (is8Bit) return full & 0xff;
+    if (is16Bit) return full & 0xffff;
+    return full;
   }
 
   /**
-   * Writes to a register. If is16Bit is true, preserves bits [31:16] and updates [15:0].
+   * Writes to a register, preserving unmodified bits for sub-registers.
    */
-  public writeRegister(regId: RegisterId, value: number, is16Bit: boolean = false): void {
+  public writeRegister(
+    regId: RegisterId,
+    value: number,
+    is16Bit: boolean = false,
+    is8Bit: boolean = false,
+    is8BitHigh: boolean = false
+  ): void {
     const u32 = toUint32(value);
-    if (is16Bit) {
+    if (is8BitHigh) {
+      const masked = this.registers[regId] & 0xffff00ff;
+      this.registers[regId] = toUint32(masked | ((u32 & 0xff) << 8));
+    } else if (is8Bit) {
+      const masked = this.registers[regId] & 0xffffff00;
+      this.registers[regId] = toUint32(masked | (u32 & 0xff));
+    } else if (is16Bit) {
       const upper = this.registers[regId] & 0xffff0000;
       const lower = u32 & 0xffff;
       this.registers[regId] = toUint32(upper | lower);
@@ -251,9 +279,8 @@ export class CPU {
 
     // Load operand values into Latches A & B
     if (dest.type === 'REG' && dest.reg !== undefined) {
-      this.latchA = this.readRegister(dest.reg, dest.is16Bit);
-      const regName = dest.is16Bit ? SUB_REGISTER_NAMES[dest.reg] : REGISTER_NAMES[dest.reg];
-      latchASource = `REG(${regName})`;
+      this.latchA = this.readRegister(dest.reg, dest.is16Bit, dest.is8Bit, dest.is8BitHigh);
+      latchASource = `REG(${dest.rawString})`;
     } else if (dest.type === 'MEM' && dest.isDirect) {
       this.latchA = 0;
       latchASource = `ADDR(0x${(dest.memOffset ?? 0).toString(16).toUpperCase()})`;
@@ -265,9 +292,8 @@ export class CPU {
     }
 
     if (src.type === 'REG' && src.reg !== undefined) {
-      this.latchB = this.readRegister(src.reg, src.is16Bit);
-      const regName = src.is16Bit ? SUB_REGISTER_NAMES[src.reg] : REGISTER_NAMES[src.reg];
-      latchBSource = `REG(${regName})`;
+      this.latchB = this.readRegister(src.reg, src.is16Bit, src.is8Bit, src.is8BitHigh);
+      latchBSource = `REG(${src.rawString})`;
     } else if (src.type === 'IMM' && src.imm !== undefined) {
       this.latchB = src.imm;
       latchBSource = `IMM(${src.imm})`;
@@ -288,7 +314,7 @@ export class CPU {
     this.activeBuses = ['IR_TO_CU', 'IR_TO_REG_READ', 'REGS_TO_LATCHES'];
 
     const formalRTL = `Decoded: ${this.decoded.assemblyString}; Latch_A <- ${latchASource} (${toHex32(this.latchA)}); Latch_B <- ${latchBSource} (${toHex32(this.latchB)})`;
-    
+
     let studentEnglish: string;
     if (src.type === 'IMM' && src.imm !== undefined) {
       studentEnglish = `Decode: Identified '${this.decoded.assemblyString}'. Read ${dest.rawString} into Latch A; extracted literal constant ${src.imm} directly into Latch B.`;
@@ -318,10 +344,27 @@ export class CPU {
     const { opcode, mnemonic, dest, src } = this.decoded;
 
     switch (opcode) {
+      case OPCODES.NOP: {
+        this.activeBuses = [];
+        this.addTrace(
+          'EXECUTE',
+          'NOP',
+          'No operation performed',
+          'Execute: NOP executed. Processor pipeline and state maintained without modification.'
+        );
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
       case OPCODES.MOV_RR:
       case OPCODES.MOV_RI: {
         this.aluOut = toUint32(this.latchB);
-        this.activeBuses = src.type === 'IMM' ? ['IMM_TO_ALU', 'ALU_TO_ALU_OUT'] : ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT'];
+        this.activeBuses =
+          src.type === 'IMM'
+            ? ['IMM_TO_ALU', 'ALU_TO_ALU_OUT']
+            : ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT'];
         const studentText = `Execute: Routed ${this.latchBSource} (value ${toInt32(this.aluOut)}) through ALU toward writeback.`;
         this.addTrace(
           'EXECUTE',
@@ -352,7 +395,7 @@ export class CPU {
       }
 
       case OPCODES.MOV_RM: {
-        // Load: Effective address = BaseReg + Offset (or Direct Address)
+        // Load Word
         const offset = src.memOffset ?? 0;
         this.aluOut = src.isDirect ? toUint32(offset) : toUint32(this.latchB + offset);
         this.activeBuses = ['LATCHES_TO_ALU', 'IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
@@ -373,7 +416,7 @@ export class CPU {
       }
 
       case OPCODES.MOV_MR: {
-        // Store: Effective address = BaseReg + Offset (or Direct Address)
+        // Store Word
         const offset = dest.memOffset ?? 0;
         this.aluOut = dest.isDirect ? toUint32(offset) : toUint32(this.latchA + offset);
         this.activeBuses = ['LATCHES_TO_ALU', 'IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
@@ -393,6 +436,378 @@ export class CPU {
         break;
       }
 
+      case OPCODES.MOVB_RM: {
+        // Byte Load
+        const offset = src.memOffset ?? 0;
+        this.aluOut = src.isDirect ? toUint32(offset) : toUint32(this.latchB + offset);
+        this.activeBuses = ['LATCHES_TO_ALU', 'IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
+        this.addTrace(
+          'EXECUTE',
+          `Effective Address <- ${toHex32(this.aluOut)} (Byte Load)`,
+          'Computed byte memory address for load',
+          `Execute: Computed byte address ${toHex32(this.aluOut)} for 8-bit memory load.`
+        );
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'MEMORY';
+        break;
+      }
+
+      case OPCODES.MOVB_MR: {
+        // Byte Store
+        const offset = dest.memOffset ?? 0;
+        this.aluOut = dest.isDirect ? toUint32(offset) : toUint32(this.latchA + offset);
+        this.activeBuses = ['LATCHES_TO_ALU', 'IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
+        this.addTrace(
+          'EXECUTE',
+          `Effective Address <- ${toHex32(this.aluOut)} (Byte Store)`,
+          'Computed byte memory address for store',
+          `Execute: Computed byte address ${toHex32(this.aluOut)} for 8-bit memory write.`
+        );
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'MEMORY';
+        break;
+      }
+
+      case OPCODES.LEA: {
+        const offset = src.memOffset ?? 0;
+        this.aluOut = src.isDirect ? toUint32(offset) : toUint32(this.latchB + offset);
+        this.activeBuses = ['LATCHES_TO_ALU', 'IMM_TO_ALU', 'ALU_TO_ALU_OUT'];
+        this.addTrace(
+          'EXECUTE',
+          `LEA: ${dest.rawString} <- Effective Address (${toHex32(this.aluOut)})`,
+          'Calculated effective address without accessing memory',
+          `Execute: Computed pointer address ${toHex32(this.aluOut)} directly from base and offset.`
+        );
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'WRITEBACK';
+        break;
+      }
+
+      case OPCODES.XCHG: {
+        if (dest.reg !== undefined && src.reg !== undefined) {
+          const vA = this.readRegister(dest.reg, dest.is16Bit, dest.is8Bit, dest.is8BitHigh);
+          const vB = this.readRegister(src.reg, src.is16Bit, src.is8Bit, src.is8BitHigh);
+          this.writeRegister(dest.reg, vB, dest.is16Bit, dest.is8Bit, dest.is8BitHigh);
+          this.writeRegister(src.reg, vA, src.is16Bit, src.is8Bit, src.is8BitHigh);
+          this.activeBuses = ['REGS_TO_LATCHES', 'ALU_OUT_TO_REG_WB'];
+          this.addTrace(
+            'EXECUTE',
+            `XCHG: ${dest.rawString} <-> ${src.rawString} (${toHex32(vA)} <-> ${toHex32(vB)})`,
+            'Swapped register contents',
+            `Execute: Exchanged values between ${dest.rawString} and ${src.rawString}.`
+          );
+        }
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
+      case OPCODES.PUSH: {
+        const valToPush = dest.type === 'IMM' ? (dest.imm ?? 0) : this.latchA;
+        const oldSp = this.readRegister(7);
+        const newSp = toUint32(oldSp - 4);
+        this.writeRegister(7, newSp);
+        this.memory.writeWord(newSp, valToPush);
+        this.lastModifiedMem = newSp;
+        this.mar = newSp;
+        this.mdr = valToPush;
+        this.activeBuses = ['REGS_TO_LATCHES', 'ALU_OUT_TO_MAR', 'MDR_TO_DATA_MEM'];
+        this.addTrace(
+          'EXECUTE',
+          `PUSH: ESP <- ESP - 4 (${toHex32(newSp)}); RAM[${toHex32(newSp)}] <- ${toHex32(valToPush)}`,
+          'Pushed value onto stack',
+          `Execute: Decremented stack pointer ESP to ${toHex32(newSp)} and wrote ${toHex32(valToPush)} to stack top.`
+        );
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
+      case OPCODES.POP: {
+        const oldSp = this.readRegister(7);
+        const poppedVal = this.memory.readWord(oldSp);
+        const newSp = toUint32(oldSp + 4);
+        this.writeRegister(7, newSp);
+        if (dest.reg !== undefined) {
+          this.writeRegister(dest.reg, poppedVal, dest.is16Bit, dest.is8Bit, dest.is8BitHigh);
+        }
+        this.mar = oldSp;
+        this.mdr = poppedVal;
+        this.activeBuses = ['MEM_TO_MDR', 'MDR_TO_REG_WB'];
+        this.addTrace(
+          'EXECUTE',
+          `POP: ${dest.rawString} <- RAM[${toHex32(oldSp)}] (${toHex32(poppedVal)}); ESP <- ESP + 4 (${toHex32(newSp)})`,
+          'Popped value from stack',
+          `Execute: Retrieved ${toHex32(poppedVal)} from stack top at ${toHex32(oldSp)} into ${dest.rawString} and incremented ESP to ${toHex32(newSp)}.`
+        );
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
+      case OPCODES.CALL: {
+        const returnAddr = this.eip; // already incremented past instruction in FETCH
+        const oldSp = this.readRegister(7);
+        const newSp = toUint32(oldSp - 4);
+        this.writeRegister(7, newSp);
+        this.memory.writeWord(newSp, returnAddr);
+        this.lastModifiedMem = newSp;
+        this.mar = newSp;
+        this.mdr = returnAddr;
+
+        const target = dest.imm ?? 0;
+        this.eip = toUint32(target);
+        this.activeBuses = ['BRANCH_TARGET_TO_EIP', 'MDR_TO_DATA_MEM'];
+        this.addTrace(
+          'EXECUTE',
+          `CALL: Stack[${toHex32(newSp)}] <- Return Addr (${toHex32(returnAddr)}); EIP <- ${toHex32(this.eip)}`,
+          'Subroutine call',
+          `Execute: Pushed return address ${toHex32(returnAddr)} to stack and jumped to subroutine at ${toHex32(this.eip)}.`
+        );
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
+      case OPCODES.RET: {
+        const oldSp = this.readRegister(7);
+        const returnAddr = this.memory.readWord(oldSp);
+        const newSp = toUint32(oldSp + 4);
+        this.writeRegister(7, newSp);
+        this.eip = toUint32(returnAddr);
+        this.mar = oldSp;
+        this.mdr = returnAddr;
+        this.activeBuses = ['MEM_TO_MDR', 'BRANCH_TARGET_TO_EIP'];
+        this.addTrace(
+          'EXECUTE',
+          `RET: EIP <- Stack[${toHex32(oldSp)}] (${toHex32(returnAddr)}); ESP <- ESP + 4 (${toHex32(newSp)})`,
+          'Subroutine return',
+          `Execute: Popped return address ${toHex32(returnAddr)} into EIP and restored ESP to ${toHex32(newSp)}.`
+        );
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
+      case OPCODES.LOOP: {
+        const oldEcx = this.readRegister(2);
+        const newEcx = toUint32(oldEcx - 1);
+        this.writeRegister(2, newEcx);
+        const target = dest.imm ?? 0;
+        if (newEcx !== 0) {
+          this.eip = toUint32(target);
+          this.activeBuses = ['BRANCH_TARGET_TO_EIP'];
+          this.addTrace(
+            'EXECUTE',
+            `LOOP Taken: ECX <- ${newEcx} (ECX != 0); Branch to ${toHex32(this.eip)}`,
+            'Loop condition met',
+            `Execute: Decremented ECX to ${newEcx} (non-zero); jumped back to ${toHex32(this.eip)}.`
+          );
+        } else {
+          this.activeBuses = [];
+          this.addTrace(
+            'EXECUTE',
+            'LOOP Complete: ECX <- 0; Flow continues sequentially',
+            'Loop completed',
+            'Execute: Loop counter ECX reached 0. Sequential execution maintained.'
+          );
+        }
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
+      case OPCODES.FLAG_OP: {
+        const imm = dest.imm ?? 0;
+        let desc = '';
+        if (imm === 0) {
+          this.flags.cf = false;
+          desc = 'CLC (Clear Carry Flag: CF = 0)';
+        } else if (imm === 1) {
+          this.flags.cf = true;
+          desc = 'STC (Set Carry Flag: CF = 1)';
+        } else {
+          this.flags.cf = !this.flags.cf;
+          desc = `CMC (Complement Carry Flag: CF = ${this.flags.cf ? 1 : 0})`;
+        }
+        this.activeBuses = ['ALU_TO_FLAGS'];
+        this.addTrace('EXECUTE', desc, 'Modified Carry Flag in EFLAGS', `Execute: ${desc}.`);
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
+      case OPCODES.INC:
+      case OPCODES.DEC:
+      case OPCODES.NEG:
+      case OPCODES.NOT: {
+        let aluOp: ALUOperation = 'INC';
+        if (opcode === OPCODES.DEC) aluOp = 'DEC';
+        else if (opcode === OPCODES.NEG) aluOp = 'NEG';
+        else if (opcode === OPCODES.NOT) aluOp = 'NOT';
+
+        const res = ALU.execute(aluOp, this.latchA, 0, this.flags.cf);
+        this.aluOut = res.result;
+        this.flags = res.flags;
+        this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT', 'ALU_TO_FLAGS'];
+        this.addTrace(
+          'EXECUTE',
+          `ALU_Out <- ${mnemonic}(${toHex32(this.latchA)}) = ${toHex32(this.aluOut)}; EFLAGS: ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}, CF=${this.flags.cf ? 1 : 0}`,
+          `Computed ${mnemonic} operation`,
+          `Execute: Computed ${mnemonic}(${dest.rawString}) = ${toInt32(this.aluOut)} (${toHex32(this.aluOut)}); updated condition flags.`
+        );
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'WRITEBACK';
+        break;
+      }
+
+      case OPCODES.SHL:
+      case OPCODES.SHR:
+      case OPCODES.SAR:
+      case OPCODES.ROL:
+      case OPCODES.ROR: {
+        let aluOp: ALUOperation = 'SHL';
+        if (opcode === OPCODES.SHR) aluOp = 'SHR';
+        else if (opcode === OPCODES.SAR) aluOp = 'SAR';
+        else if (opcode === OPCODES.ROL) aluOp = 'ROL';
+        else if (opcode === OPCODES.ROR) aluOp = 'ROR';
+
+        const res = ALU.execute(aluOp, this.latchA, this.latchB, this.flags.cf);
+        this.aluOut = res.result;
+        this.flags = res.flags;
+        this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT', 'ALU_TO_FLAGS'];
+        this.addTrace(
+          'EXECUTE',
+          `ALU_Out <- ${mnemonic}(${toHex32(this.latchA)}, ${this.latchB & 0x1f}) = ${toHex32(this.aluOut)}; CF=${this.flags.cf ? 1 : 0}`,
+          `Shift/Rotate operation`,
+          `Execute: Bitwise shifted ${dest.rawString} by ${this.latchB & 0x1f} bits = ${toHex32(this.aluOut)}.`
+        );
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'WRITEBACK';
+        break;
+      }
+
+      case OPCODES.MUL: {
+        if (dest.type === 'REG' && dest.reg !== undefined && dest.reg !== 0) {
+          // IMUL dest, src
+          const prod = BigInt(toInt32(this.latchA)) * BigInt(toInt32(this.latchB));
+          this.aluOut = Number(BigInt.asIntN(32, prod));
+          const overflow = prod > 2147483647n || prod < -2147483648n;
+          this.flags.cf = overflow;
+          this.flags.of = overflow;
+          this.flags.zf = this.aluOut === 0;
+          this.flags.sf = (this.aluOut & 0x80000000) !== 0;
+          this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT', 'ALU_TO_FLAGS'];
+          this.addTrace(
+            'EXECUTE',
+            `IMUL: ${dest.rawString} <- (${toInt32(this.latchA)} * ${toInt32(this.latchB)}) = ${toInt32(this.aluOut)}`,
+            'Signed multiply',
+            `Execute: Multiplied operands = ${toInt32(this.aluOut)}.`
+          );
+          this.phase = 'EXECUTE';
+          this.nextPhase = 'WRITEBACK';
+        } else {
+          // MUL src: EAX * src -> EDX:EAX
+          const eax = toUint32(this.readRegister(0));
+          const prod = BigInt(eax) * BigInt(toUint32(this.latchB));
+          const low32 = Number(prod & 0xffffffffn);
+          const high32 = Number((prod >> 32n) & 0xffffffffn);
+          this.writeRegister(0, low32);
+          this.writeRegister(3, high32);
+          const hasUpper = high32 !== 0;
+          this.flags.cf = hasUpper;
+          this.flags.of = hasUpper;
+          this.flags.zf = low32 === 0 && high32 === 0;
+          this.flags.sf = (high32 & 0x80000000) !== 0;
+          this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT', 'ALU_TO_FLAGS'];
+          this.addTrace(
+            'EXECUTE',
+            `MUL: EDX:EAX <- (${eax} * ${toUint32(this.latchB)}) = EDX:${toHex32(high32)}, EAX:${toHex32(low32)}`,
+            'Unsigned multiply EDX:EAX',
+            `Execute: 64-bit product loaded into EDX (${toHex32(high32)}) and EAX (${toHex32(low32)}).`
+          );
+          this.instructionCount++;
+          this.phase = 'EXECUTE';
+          this.nextPhase = 'FETCH';
+        }
+        break;
+      }
+
+      case OPCODES.DIV: {
+        const divisor = toUint32(this.latchB);
+        if (divisor === 0) {
+          this.consoleOutput.push({
+            id: this.nextConsoleId++,
+            cycle: this.cycles,
+            type: 'system',
+            text: '[CPU EXCEPTION #DE]: Divide by zero error! Execution halted.',
+            timestamp: Date.now(),
+          });
+          this.halted = true;
+          this.phase = 'HALTED';
+          this.nextPhase = 'HALTED';
+          return;
+        }
+        const eax = toUint32(this.readRegister(0));
+        const edx = toUint32(this.readRegister(3));
+        const dividend = (BigInt(edx) << 32n) | BigInt(eax);
+        const quot = Number(dividend / BigInt(divisor));
+        const rem = Number(dividend % BigInt(divisor));
+        this.writeRegister(0, quot);
+        this.writeRegister(3, rem);
+        this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT'];
+        this.addTrace(
+          'EXECUTE',
+          `DIV: EAX <- Quotient (${quot}), EDX <- Remainder (${rem})`,
+          'Unsigned divide',
+          `Execute: Divided dividend by ${divisor}. Quotient in EAX (${quot}), Remainder in EDX (${rem}).`
+        );
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
+      case OPCODES.IDIV: {
+        const divisor = toInt32(this.latchB);
+        if (divisor === 0) {
+          this.consoleOutput.push({
+            id: this.nextConsoleId++,
+            cycle: this.cycles,
+            type: 'system',
+            text: '[CPU EXCEPTION #DE]: Signed divide by zero error! Execution halted.',
+            timestamp: Date.now(),
+          });
+          this.halted = true;
+          this.phase = 'HALTED';
+          this.nextPhase = 'HALTED';
+          return;
+        }
+        const eax = toInt32(this.readRegister(0));
+        const quot = Math.trunc(eax / divisor);
+        const rem = eax % divisor;
+        this.writeRegister(0, toUint32(quot));
+        this.writeRegister(3, toUint32(rem));
+        this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT'];
+        this.addTrace(
+          'EXECUTE',
+          `IDIV: EAX <- Quotient (${quot}), EDX <- Remainder (${rem})`,
+          'Signed divide',
+          `Execute: Signed divide ${eax} / ${divisor}. Quotient in EAX (${quot}), Remainder in EDX (${rem}).`
+        );
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
       case OPCODES.ADD_RR:
       case OPCODES.ADD_RI:
       case OPCODES.SUB_RR:
@@ -402,22 +817,28 @@ export class CPU {
       case OPCODES.OR_RR:
       case OPCODES.OR_RI:
       case OPCODES.XOR_RR:
-      case OPCODES.XOR_RI: {
+      case OPCODES.XOR_RI:
+      case OPCODES.ADC_RR:
+      case OPCODES.ADC_RI:
+      case OPCODES.SBB_RR:
+      case OPCODES.SBB_RI: {
         let op: ALUOperation = 'ADD';
-        if (mnemonic === 'SUB') op = 'SUB';
-        else if (mnemonic === 'AND') op = 'AND';
-        else if (mnemonic === 'OR') op = 'OR';
-        else if (mnemonic === 'XOR') op = 'XOR';
+        if (opcode === OPCODES.SUB_RR || opcode === OPCODES.SUB_RI) op = 'SUB';
+        else if (opcode === OPCODES.AND_RR || opcode === OPCODES.AND_RI) op = 'AND';
+        else if (opcode === OPCODES.OR_RR || opcode === OPCODES.OR_RI) op = 'OR';
+        else if (opcode === OPCODES.XOR_RR || opcode === OPCODES.XOR_RI) op = 'XOR';
+        else if (opcode === OPCODES.ADC_RR || opcode === OPCODES.ADC_RI) op = 'ADC';
+        else if (opcode === OPCODES.SBB_RR || opcode === OPCODES.SBB_RI) op = 'SBB';
 
-        const res = ALU.execute(op, this.latchA, this.latchB);
+        const res = ALU.execute(op, this.latchA, this.latchB, this.flags.cf);
         this.aluOut = res.result;
         this.flags = res.flags;
 
         this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_ALU_OUT', 'ALU_TO_FLAGS'];
-        const studentText = `Execute: ALU calculated ${mnemonic}(${toInt32(this.latchA)}, ${toInt32(this.latchB)}) = ${toInt32(this.aluOut)} (${toHex32(this.aluOut)}); updated condition flags (ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}).`;
+        const studentText = `Execute: ALU calculated ${mnemonic}(${toInt32(this.latchA)}, ${toInt32(this.latchB)}) = ${toInt32(this.aluOut)} (${toHex32(this.aluOut)}); updated condition flags (ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}, CF=${this.flags.cf ? 1 : 0}).`;
         this.addTrace(
           'EXECUTE',
-          `ALU_Out <- ${mnemonic}(${toHex32(this.latchA)}, ${toHex32(this.latchB)}) = ${toHex32(this.aluOut)}; EFLAGS: ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}`,
+          `ALU_Out <- ${mnemonic}(${toHex32(this.latchA)}, ${toHex32(this.latchB)}) = ${toHex32(this.aluOut)}; EFLAGS: ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}, CF=${this.flags.cf ? 1 : 0}`,
           `Computed ${mnemonic} and updated EFLAGS`,
           studentText
         );
@@ -428,86 +849,127 @@ export class CPU {
 
       case OPCODES.CMP_RR:
       case OPCODES.CMP_RI: {
-        // Compute A - B, discard result, update EFLAGS
         const res = ALU.execute('SUB', this.latchA, this.latchB);
         this.flags = res.flags;
         this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_FLAGS'];
-        const studentText = `Execute: Compared ${dest.rawString} (${toInt32(this.latchA)}) with ${src.rawString} (${toInt32(this.latchB)}). Updated flags (ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}) and discarded difference.`;
+        const studentText = `Execute: Compared ${dest.rawString} (${toInt32(this.latchA)}) with ${src.rawString} (${toInt32(this.latchB)}). Updated flags (ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, CF=${this.flags.cf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}) and discarded difference.`;
         this.addTrace(
           'EXECUTE',
-          `CMP: (${toHex32(this.latchA)} - ${toHex32(this.latchB)}); EFLAGS: ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}`,
+          `CMP: (${toHex32(this.latchA)} - ${toHex32(this.latchB)}); EFLAGS: ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}, OF=${this.flags.of ? 1 : 0}, CF=${this.flags.cf ? 1 : 0}`,
           `Compared operands and updated condition flags`,
           studentText
         );
-        // CMP has no writeback phase; finishes in Execute!
         this.instructionCount++;
         this.phase = 'EXECUTE';
         this.nextPhase = 'FETCH';
         break;
       }
 
-      case OPCODES.JE: {
-        const target = dest.imm ?? 0;
-        if (this.flags.zf) {
-          this.eip = toUint32(target);
-          this.activeBuses = ['BRANCH_TARGET_TO_EIP'];
-          this.addTrace(
-            'EXECUTE',
-            `JE Taken (ZF=1): EIP <- ${toHex32(this.eip)}`,
-            `Condition met; jumped to ${toHex32(this.eip)}`,
-            `Execute: Branch condition met (ZF=1). Overrode sequential flow and jumped to address ${toHex32(this.eip)}.`
-          );
-        } else {
-          this.activeBuses = [];
-          this.addTrace(
-            'EXECUTE',
-            `JE Not Taken (ZF=0): Sequential EIP maintained (${toHex32(this.eip)})`,
-            `Condition false; sequential execution continues`,
-            `Execute: Branch condition false (ZF=0). Sequential flow maintained at ${toHex32(this.eip)}.`
-          );
-        }
-        this.instructionCount++;
-        this.phase = 'EXECUTE';
-        this.nextPhase = 'FETCH';
-        break;
-      }
-
-      case OPCODES.JNE: {
-        const target = dest.imm ?? 0;
-        if (!this.flags.zf) {
-          this.eip = toUint32(target);
-          this.activeBuses = ['BRANCH_TARGET_TO_EIP'];
-          this.addTrace(
-            'EXECUTE',
-            `JNE Taken (ZF=0): EIP <- ${toHex32(this.eip)}`,
-            `Condition met; jumped to ${toHex32(this.eip)}`,
-            `Execute: Not-equal condition met (ZF=0). Overrode sequential flow and jumped to address ${toHex32(this.eip)}.`
-          );
-        } else {
-          this.activeBuses = [];
-          this.addTrace(
-            'EXECUTE',
-            `JNE Not Taken (ZF=1): Sequential EIP maintained (${toHex32(this.eip)})`,
-            `Condition false; sequential execution continues`,
-            `Execute: Condition false (ZF=1). Sequential flow maintained at ${toHex32(this.eip)}.`
-          );
-        }
-        this.instructionCount++;
-        this.phase = 'EXECUTE';
-        this.nextPhase = 'FETCH';
-        break;
-      }
-
-      case OPCODES.JMP: {
-        const target = dest.imm ?? 0;
-        this.eip = toUint32(target);
-        this.activeBuses = ['JUMP_TARGET_TO_EIP'];
+      case OPCODES.TEST_RR:
+      case OPCODES.TEST_RI: {
+        const res = ALU.execute('AND', this.latchA, this.latchB);
+        this.flags = res.flags;
+        this.flags.cf = false;
+        this.flags.of = false;
+        this.activeBuses = ['LATCHES_TO_ALU', 'ALU_TO_FLAGS'];
+        const studentText = `Execute: Tested bitwise AND of ${dest.rawString} (${toHex32(this.latchA)}) and ${src.rawString} (${toHex32(this.latchB)}). Updated flags (ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}) and discarded result.`;
         this.addTrace(
           'EXECUTE',
-          `JMP: EIP <- ${toHex32(this.eip)}`,
-          `Unconditional jump to ${toHex32(this.eip)}`,
-          `Execute: Unconditional jump. Loaded target address ${toHex32(this.eip)} into EIP.`
+          `TEST: (${toHex32(this.latchA)} & ${toHex32(this.latchB)}); EFLAGS: ZF=${this.flags.zf ? 1 : 0}, SF=${this.flags.sf ? 1 : 0}`,
+          `Tested bits and updated condition flags`,
+          studentText
         );
+        this.instructionCount++;
+        this.phase = 'EXECUTE';
+        this.nextPhase = 'FETCH';
+        break;
+      }
+
+      // Branching Instructions
+      case OPCODES.JE:
+      case OPCODES.JNE:
+      case OPCODES.JMP:
+      case OPCODES.JL:
+      case OPCODES.JLE:
+      case OPCODES.JG:
+      case OPCODES.JGE:
+      case OPCODES.JB:
+      case OPCODES.JBE:
+      case OPCODES.JA:
+      case OPCODES.JAE:
+      case OPCODES.JS:
+      case OPCODES.JNS:
+      case OPCODES.JO:
+      case OPCODES.JNO: {
+        const target = dest.imm ?? 0;
+        let taken = false;
+
+        switch (opcode) {
+          case OPCODES.JE:
+            taken = this.flags.zf;
+            break;
+          case OPCODES.JNE:
+            taken = !this.flags.zf;
+            break;
+          case OPCODES.JMP:
+            taken = true;
+            break;
+          case OPCODES.JL:
+            taken = this.flags.sf !== this.flags.of;
+            break;
+          case OPCODES.JLE:
+            taken = this.flags.zf || this.flags.sf !== this.flags.of;
+            break;
+          case OPCODES.JG:
+            taken = !this.flags.zf && this.flags.sf === this.flags.of;
+            break;
+          case OPCODES.JGE:
+            taken = this.flags.sf === this.flags.of;
+            break;
+          case OPCODES.JB:
+            taken = this.flags.cf;
+            break;
+          case OPCODES.JBE:
+            taken = this.flags.cf || this.flags.zf;
+            break;
+          case OPCODES.JA:
+            taken = !this.flags.cf && !this.flags.zf;
+            break;
+          case OPCODES.JAE:
+            taken = !this.flags.cf;
+            break;
+          case OPCODES.JS:
+            taken = this.flags.sf;
+            break;
+          case OPCODES.JNS:
+            taken = !this.flags.sf;
+            break;
+          case OPCODES.JO:
+            taken = this.flags.of;
+            break;
+          case OPCODES.JNO:
+            taken = !this.flags.of;
+            break;
+        }
+
+        if (taken) {
+          this.eip = toUint32(target);
+          this.activeBuses = ['BRANCH_TARGET_TO_EIP'];
+          this.addTrace(
+            'EXECUTE',
+            `${mnemonic} Taken: EIP <- ${toHex32(this.eip)}`,
+            `Branch condition met; jumped to ${toHex32(this.eip)}`,
+            `Execute: Branch condition met for ${mnemonic}. Loaded target address ${toHex32(this.eip)} into EIP.`
+          );
+        } else {
+          this.activeBuses = [];
+          this.addTrace(
+            'EXECUTE',
+            `${mnemonic} Not Taken: Sequential EIP maintained (${toHex32(this.eip)})`,
+            `Branch condition not met; continued sequentially`,
+            `Execute: Branch condition not met for ${mnemonic}. Sequential flow maintained at ${toHex32(this.eip)}.`
+          );
+        }
         this.instructionCount++;
         this.phase = 'EXECUTE';
         this.nextPhase = 'FETCH';
@@ -517,9 +979,8 @@ export class CPU {
       case OPCODES.PRINT: {
         let printText = '';
         if (dest.type === 'REG' && dest.reg !== undefined) {
-          const val = this.readRegister(dest.reg, dest.is16Bit);
-          const regName = dest.is16Bit ? SUB_REGISTER_NAMES[dest.reg] : REGISTER_NAMES[dest.reg];
-          printText = `[OUT]: ${regName} = ${toInt32(val)} (${toHex32(val)})`;
+          const val = this.readRegister(dest.reg, dest.is16Bit, dest.is8Bit, dest.is8BitHigh);
+          printText = `[OUT]: ${dest.rawString} = ${toInt32(val)} (${toHex32(val)})`;
           this.activeBuses = ['REGS_TO_LATCHES', 'REG_TO_CONSOLE'];
         } else if (dest.type === 'IMM') {
           const val = dest.imm ?? 0;
@@ -683,7 +1144,7 @@ export class CPU {
     const { opcode } = this.decoded;
 
     if (opcode === OPCODES.MOV_RM) {
-      // Load
+      // 32-bit Word Load
       this.mar = this.aluOut;
       this.mdr = this.memory.readWord(this.mar);
       this.activeBuses = ['ALU_OUT_TO_MAR', 'MEM_TO_MDR'];
@@ -696,8 +1157,22 @@ export class CPU {
       );
       this.phase = 'MEMORY';
       this.nextPhase = 'WRITEBACK';
+    } else if (opcode === OPCODES.MOVB_RM) {
+      // 8-bit Byte Load
+      this.mar = this.aluOut;
+      this.mdr = this.memory.readByte(this.mar);
+      this.activeBuses = ['ALU_OUT_TO_MAR', 'MEM_TO_MDR'];
+      const studentText = `Memory: Sent address ${toHex32(this.mar)} to RAM; loaded 8-bit byte 0x${this.mdr.toString(16).toUpperCase()} into MDR.`;
+      this.addTrace(
+        'MEMORY',
+        `MAR <- ${toHex32(this.mar)}; MDR <- Byte[${toHex32(this.mar)}] (0x${this.mdr.toString(16).toUpperCase()})`,
+        `Loaded 8-bit byte from memory`,
+        studentText
+      );
+      this.phase = 'MEMORY';
+      this.nextPhase = 'WRITEBACK';
     } else if (opcode === OPCODES.MOV_MR) {
-      // Store
+      // 32-bit Word Store
       this.mar = this.aluOut;
       this.mdr = this.latchB;
       this.memory.writeWord(this.mar, this.mdr);
@@ -725,6 +1200,24 @@ export class CPU {
       this.instructionCount++;
       this.phase = 'MEMORY';
       this.nextPhase = 'FETCH';
+    } else if (opcode === OPCODES.MOVB_MR) {
+      // 8-bit Byte Store
+      this.mar = this.aluOut;
+      this.mdr = this.latchB & 0xff;
+      this.memory.writeByte(this.mar, this.mdr);
+      this.lastModifiedMem = this.mar;
+
+      this.activeBuses = ['ALU_OUT_TO_MAR', 'LATCH_TO_MDR', 'MDR_TO_DATA_MEM'];
+      const studentText = `Memory: Sent target address ${toHex32(this.mar)} into MAR and byte 0x${this.mdr.toString(16).toUpperCase()} into MDR; committed write to Data RAM.`;
+      this.addTrace(
+        'MEMORY',
+        `MAR <- ${toHex32(this.mar)}; MDR <- 0x${this.mdr.toString(16).toUpperCase()}; Byte[${toHex32(this.mar)}] <- MDR`,
+        `Stored byte to Data RAM`,
+        studentText
+      );
+      this.instructionCount++;
+      this.phase = 'MEMORY';
+      this.nextPhase = 'FETCH';
     } else {
       this.instructionCount++;
       this.phase = 'MEMORY';
@@ -737,18 +1230,24 @@ export class CPU {
     const { opcode, dest } = this.decoded;
 
     if (dest.type === 'REG' && dest.reg !== undefined) {
-      const regName = dest.is16Bit ? SUB_REGISTER_NAMES[dest.reg] : REGISTER_NAMES[dest.reg];
       let writeVal = this.aluOut;
 
-      if (opcode === OPCODES.MOV_RM) {
+      if (opcode === OPCODES.MOV_RM || opcode === OPCODES.MOVB_RM) {
         writeVal = this.mdr;
         this.activeBuses = ['MDR_TO_REG_WB'];
       } else {
         this.activeBuses = ['ALU_OUT_TO_REG_WB'];
       }
 
-      this.writeRegister(dest.reg, writeVal, dest.is16Bit);
+      this.writeRegister(
+        dest.reg,
+        writeVal,
+        dest.is16Bit,
+        dest.is8Bit,
+        dest.is8BitHigh
+      );
 
+      const regName = dest.rawString;
       const studentText = `Writeback: Stored computed result ${toHex32(writeVal)} (${toInt32(writeVal)}) into destination register ${regName}.`;
       this.addTrace(
         'WRITEBACK',

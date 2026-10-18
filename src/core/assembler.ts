@@ -26,6 +26,7 @@ interface ParsedMemoryOperand {
   baseReg: RegisterId;
   offset: number;
   isDirect: boolean;
+  isByte?: boolean;
 }
 
 export class Assembler {
@@ -462,7 +463,7 @@ export class Assembler {
   }
 
   private static isMemoryOperand(str: string): boolean {
-    const s = str.trim();
+    const s = str.trim().replace(/^(BYTE|WORD|DWORD)\s+/i, '').trim();
     return s.startsWith('[') && s.endsWith(']');
   }
 
@@ -471,7 +472,15 @@ export class Assembler {
     lineNum: number,
     labels?: Map<string, number>
   ): ParsedMemoryOperand {
-    const s = memStr.trim();
+    let s = memStr.trim();
+    let isByte = false;
+    if (/^BYTE\s+/i.test(s)) {
+      isByte = true;
+      s = s.replace(/^BYTE\s+/i, '').trim();
+    } else if (/^(WORD|DWORD)\s+/i.test(s)) {
+      s = s.replace(/^(WORD|DWORD)\s+/i, '').trim();
+    }
+
     if (!s.startsWith('[') || !s.endsWith(']')) {
       throw new Error(
         `Line ${lineNum}: Expected memory operand enclosed in brackets like '[EBX]' or '[EBX + 4]'`
@@ -482,11 +491,11 @@ export class Assembler {
     // Direct address or label, e.g. [0x0800] or [msg]
     if (labels && labels.has(inner.toLowerCase())) {
       const addr = labels.get(inner.toLowerCase())!;
-      return { baseReg: 0, offset: addr, isDirect: true };
+      return { baseReg: 0, offset: addr, isDirect: true, isByte };
     }
     if (/^(0x[0-9a-fA-F]+|[0-9]+[hH]?|[0-9]+)$/.test(inner)) {
       const addr = this.parseImmediate(inner, lineNum, labels);
-      return { baseReg: 0, offset: addr, isDirect: true };
+      return { baseReg: 0, offset: addr, isDirect: true, isByte };
     }
 
     // [reg + offset] or [reg - offset] or [label + offset]
@@ -498,16 +507,16 @@ export class Assembler {
 
       if (labels && labels.has(baseStr.toLowerCase())) {
         const baseAddr = labels.get(baseStr.toLowerCase())!;
-        return { baseReg: 0, offset: baseAddr + sign * offsetVal, isDirect: true };
+        return { baseReg: 0, offset: baseAddr + sign * offsetVal, isDirect: true, isByte };
       }
 
       const regToken = this.parseRegister(baseStr, lineNum);
-      return { baseReg: regToken.id, offset: sign * offsetVal, isDirect: false };
+      return { baseReg: regToken.id, offset: sign * offsetVal, isDirect: false, isByte };
     }
 
     // Simple [reg]
     const regToken = this.parseRegister(inner, lineNum);
-    return { baseReg: regToken.id, offset: 0, isDirect: false };
+    return { baseReg: regToken.id, offset: 0, isDirect: false, isByte };
   }
 
   private static encodeInstruction(
@@ -518,9 +527,24 @@ export class Assembler {
     lineNum: number
   ): number {
     switch (mnemonic) {
+      case 'NOP':
+        return ((OPCODES.NOP & 0x3f) << 26) >>> 0;
+
       case 'HLT':
       case 'HALT':
         return ((OPCODES.HLT & 0x3f) << 26) >>> 0;
+
+      case 'RET':
+        return ((OPCODES.RET & 0x3f) << 26) >>> 0;
+
+      case 'CLC':
+        return this.pack(OPCODES.FLAG_OP, 0, 0, false, false, 0);
+
+      case 'STC':
+        return this.pack(OPCODES.FLAG_OP, 0, 0, false, false, 1);
+
+      case 'CMC':
+        return this.pack(OPCODES.FLAG_OP, 0, 0, false, false, 2);
 
       case 'MOVH': {
         if (args.length !== 2) throw new Error(`Line ${lineNum}: MOVH requires 2 operands: MOVH reg, imm`);
@@ -534,7 +558,7 @@ export class Assembler {
         const argStr = args[0].trim();
         try {
           const reg = this.parseRegister(argStr, lineNum);
-          return this.pack(OPCODES.PRINT, reg.id, 0, reg.is16Bit, false, 0);
+          return this.pack(OPCODES.PRINT, reg.id, 0, reg.is16Bit, false, 0, false, reg.is8Bit);
         } catch {
           const imm = this.parseImmediate(argStr, lineNum, labels);
           return this.pack(OPCODES.PRINT, 0, 0, false, true, imm);
@@ -551,43 +575,195 @@ export class Assembler {
         return this.pack(OPCODES.SYSCALL, 0, 0, false, false, 0x80);
       }
 
-      case 'JMP': {
-        if (args.length !== 1) throw new Error(`Line ${lineNum}: JMP requires 1 target: JMP label/address`);
+      // Branching & Subroutines
+      case 'JMP':
+      case 'JE':
+      case 'JZ':
+      case 'JNE':
+      case 'JNZ':
+      case 'JL':
+      case 'JNGE':
+      case 'JLE':
+      case 'JNG':
+      case 'JG':
+      case 'JNLE':
+      case 'JGE':
+      case 'JNL':
+      case 'JB':
+      case 'JC':
+      case 'JNAE':
+      case 'JBE':
+      case 'JNA':
+      case 'JA':
+      case 'JNBE':
+      case 'JAE':
+      case 'JNC':
+      case 'JNB':
+      case 'JS':
+      case 'JNS':
+      case 'JO':
+      case 'JNO':
+      case 'LOOP':
+      case 'CALL': {
+        if (args.length !== 1) throw new Error(`Line ${lineNum}: ${mnemonic} requires 1 target: ${mnemonic} label/address`);
         const target = this.parseImmediate(args[0], lineNum, labels);
         const wordAddr = (target >>> 2) & 0x03ffffff;
-        return (((OPCODES.JMP & 0x3f) << 26) | wordAddr) >>> 0;
+
+        let op: number = OPCODES.JMP;
+        if (mnemonic === 'JE' || mnemonic === 'JZ') op = OPCODES.JE;
+        else if (mnemonic === 'JNE' || mnemonic === 'JNZ') op = OPCODES.JNE;
+        else if (mnemonic === 'JL' || mnemonic === 'JNGE') op = OPCODES.JL;
+        else if (mnemonic === 'JLE' || mnemonic === 'JNG') op = OPCODES.JLE;
+        else if (mnemonic === 'JG' || mnemonic === 'JNLE') op = OPCODES.JG;
+        else if (mnemonic === 'JGE' || mnemonic === 'JNL') op = OPCODES.JGE;
+        else if (mnemonic === 'JB' || mnemonic === 'JC' || mnemonic === 'JNAE') op = OPCODES.JB;
+        else if (mnemonic === 'JBE' || mnemonic === 'JNA') op = OPCODES.JBE;
+        else if (mnemonic === 'JA' || mnemonic === 'JNBE') op = OPCODES.JA;
+        else if (mnemonic === 'JAE' || mnemonic === 'JNC' || mnemonic === 'JNB') op = OPCODES.JAE;
+        else if (mnemonic === 'JS') op = OPCODES.JS;
+        else if (mnemonic === 'JNS') op = OPCODES.JNS;
+        else if (mnemonic === 'JO') op = OPCODES.JO;
+        else if (mnemonic === 'JNO') op = OPCODES.JNO;
+        else if (mnemonic === 'LOOP') op = OPCODES.LOOP;
+        else if (mnemonic === 'CALL') op = OPCODES.CALL;
+
+        return (((op & 0x3f) << 26) | wordAddr) >>> 0;
       }
 
-      case 'JE': {
-        if (args.length !== 1) throw new Error(`Line ${lineNum}: JE requires 1 target: JE label/address`);
-        const target = this.parseImmediate(args[0], lineNum, labels);
-        const wordAddr = (target >>> 2) & 0x03ffffff;
-        return (((OPCODES.JE & 0x3f) << 26) | wordAddr) >>> 0;
+      case 'PUSH': {
+        if (args.length !== 1) throw new Error(`Line ${lineNum}: PUSH requires 1 operand: PUSH reg or PUSH imm`);
+        const argStr = args[0].trim();
+        try {
+          const reg = this.parseRegister(argStr, lineNum);
+          return this.pack(OPCODES.PUSH, reg.id, 0, reg.is16Bit, false, 0, false, reg.is8Bit);
+        } catch {
+          const imm = this.parseImmediate(argStr, lineNum, labels);
+          return this.pack(OPCODES.PUSH, 0, 0, false, true, imm);
+        }
       }
 
-      case 'JNE': {
-        if (args.length !== 1) throw new Error(`Line ${lineNum}: JNE requires 1 target: JNE label/address`);
-        const target = this.parseImmediate(args[0], lineNum, labels);
-        const wordAddr = (target >>> 2) & 0x03ffffff;
-        return (((OPCODES.JNE & 0x3f) << 26) | wordAddr) >>> 0;
+      case 'POP': {
+        if (args.length !== 1) throw new Error(`Line ${lineNum}: POP requires 1 operand: POP reg`);
+        const reg = this.parseRegister(args[0], lineNum);
+        return this.pack(OPCODES.POP, reg.id, 0, reg.is16Bit, false, 0, false, reg.is8Bit);
       }
 
-      case 'MOV': {
-        if (args.length !== 2) throw new Error(`Line ${lineNum}: MOV requires 2 operands: MOV dest, src`);
+      case 'INC':
+      case 'DEC':
+      case 'NEG':
+      case 'NOT': {
+        if (args.length !== 1) throw new Error(`Line ${lineNum}: ${mnemonic} requires 1 operand: ${mnemonic} reg`);
+        const reg = this.parseRegister(args[0], lineNum);
+        let op: number = OPCODES.INC;
+        if (mnemonic === 'DEC') op = OPCODES.DEC;
+        else if (mnemonic === 'NEG') op = OPCODES.NEG;
+        else if (mnemonic === 'NOT') op = OPCODES.NOT;
+        return this.pack(op, reg.id, 0, reg.is16Bit, false, 0, false, reg.is8Bit);
+      }
+
+      case 'LEA': {
+        if (args.length !== 2) throw new Error(`Line ${lineNum}: LEA requires 2 operands: LEA reg, [mem]`);
+        const destReg = this.parseRegister(args[0], lineNum);
+        const mem = this.parseMemoryOperand(args[1], lineNum, labels);
+        return this.pack(
+          OPCODES.LEA,
+          destReg.id,
+          mem.baseReg,
+          destReg.is16Bit,
+          false,
+          mem.offset,
+          mem.isDirect
+        );
+      }
+
+      case 'XCHG': {
+        if (args.length !== 2) throw new Error(`Line ${lineNum}: XCHG requires 2 operands: XCHG reg, reg`);
+        const r1 = this.parseRegister(args[0], lineNum);
+        const r2 = this.parseRegister(args[1], lineNum);
+        return this.pack(OPCODES.XCHG, r1.id, r2.id, r1.is16Bit, r2.is16Bit, 0);
+      }
+
+      case 'SHL':
+      case 'SAL':
+      case 'SHR':
+      case 'SAR':
+      case 'ROL':
+      case 'ROR': {
+        if (args.length !== 2) throw new Error(`Line ${lineNum}: ${mnemonic} requires 2 operands: ${mnemonic} reg, imm/CL`);
+        const [destStr, countStr] = args;
+        const destReg = this.parseRegister(destStr, lineNum);
+
+        let op: number = OPCODES.SHL;
+        if (mnemonic === 'SHR') op = OPCODES.SHR;
+        else if (mnemonic === 'SAR') op = OPCODES.SAR;
+        else if (mnemonic === 'ROL') op = OPCODES.ROL;
+        else if (mnemonic === 'ROR') op = OPCODES.ROR;
+
+        try {
+          const srcReg = this.parseRegister(countStr, lineNum);
+          return this.pack(op, destReg.id, srcReg.id, destReg.is16Bit, true, 0, false, destReg.is8Bit);
+        } catch {
+          const count = this.parseImmediate(countStr, lineNum, labels) & 0x1f;
+          return this.pack(op, destReg.id, 0, destReg.is16Bit, false, count, false, destReg.is8Bit);
+        }
+      }
+
+      case 'MUL':
+      case 'IMUL': {
+        if (args.length === 1) {
+          const srcReg = this.parseRegister(args[0], lineNum);
+          return this.pack(OPCODES.MUL, 0, srcReg.id, false, srcReg.is16Bit, 0);
+        }
+        if (args.length === 2) {
+          const destReg = this.parseRegister(args[0], lineNum);
+          try {
+            const srcReg = this.parseRegister(args[1], lineNum);
+            return this.pack(OPCODES.MUL, destReg.id, srcReg.id, destReg.is16Bit, srcReg.is16Bit, 0);
+          } catch {
+            const imm = this.parseImmediate(args[1], lineNum, labels);
+            return this.pack(OPCODES.MUL, destReg.id, 0, destReg.is16Bit, true, imm);
+          }
+        }
+        throw new Error(`Line ${lineNum}: ${mnemonic} takes 1 or 2 operands`);
+      }
+
+      case 'DIV':
+      case 'IDIV': {
+        if (args.length !== 1) throw new Error(`Line ${lineNum}: ${mnemonic} requires 1 operand: ${mnemonic} reg`);
+        const srcReg = this.parseRegister(args[0], lineNum);
+        return this.pack(
+          mnemonic === 'DIV' ? OPCODES.DIV : OPCODES.IDIV,
+          0,
+          srcReg.id,
+          false,
+          srcReg.is16Bit,
+          0
+        );
+      }
+
+      case 'MOV':
+      case 'MOVB':
+      case 'MOVZX':
+      case 'MOVSX': {
+        if (args.length !== 2) throw new Error(`Line ${lineNum}: ${mnemonic} requires 2 operands: ${mnemonic} dest, src`);
         const [destStr, srcStr] = args;
+        const isByteInstruction = mnemonic === 'MOVB' || mnemonic === 'MOVZX' || mnemonic === 'MOVSX';
 
         // Case 1: MOV [mem], reg (Store)
         if (this.isMemoryOperand(destStr)) {
           const mem = this.parseMemoryOperand(destStr, lineNum, labels);
           const srcReg = this.parseRegister(srcStr, lineNum);
+          const isByteStore = isByteInstruction || Boolean(mem.isByte) || Boolean(srcReg.is8Bit);
+          const op = isByteStore ? OPCODES.MOVB_MR : OPCODES.MOV_MR;
           return this.pack(
-            OPCODES.MOV_MR,
+            op,
             mem.baseReg,
             srcReg.id,
             false,
             srcReg.is16Bit,
             mem.offset,
-            mem.isDirect
+            mem.isDirect,
+            isByteStore
           );
         }
 
@@ -597,14 +773,17 @@ export class Assembler {
         // Subcase 2a: MOV reg, [mem] (Load)
         if (this.isMemoryOperand(srcStr)) {
           const mem = this.parseMemoryOperand(srcStr, lineNum, labels);
+          const isByteLoad = isByteInstruction || Boolean(mem.isByte) || Boolean(destReg.is8Bit);
+          const op = isByteLoad ? OPCODES.MOVB_RM : OPCODES.MOV_RM;
           return this.pack(
-            OPCODES.MOV_RM,
+            op,
             destReg.id,
             mem.baseReg,
             destReg.is16Bit,
             false,
             mem.offset,
-            mem.isDirect
+            mem.isDirect,
+            isByteLoad
           );
         }
 
@@ -617,7 +796,9 @@ export class Assembler {
             srcReg.id,
             destReg.is16Bit,
             srcReg.is16Bit,
-            0
+            0,
+            false,
+            destReg.is8Bit || srcReg.is8Bit
           );
         } catch {
           // Subcase 2c: MOV reg, imm
@@ -628,7 +809,9 @@ export class Assembler {
             0,
             destReg.is16Bit,
             false,
-            imm
+            imm,
+            false,
+            destReg.is8Bit
           );
         }
       }
@@ -638,7 +821,10 @@ export class Assembler {
       case 'AND':
       case 'OR':
       case 'XOR':
-      case 'CMP': {
+      case 'CMP':
+      case 'TEST':
+      case 'ADC':
+      case 'SBB': {
         if (args.length !== 2) throw new Error(`Line ${lineNum}: ${mnemonic} requires 2 operands: ${mnemonic} dest, src`);
         const [destStr, srcStr] = args;
         const destReg = this.parseRegister(destStr, lineNum);
@@ -661,6 +847,15 @@ export class Assembler {
         } else if (mnemonic === 'CMP') {
           opcodeRR = OPCODES.CMP_RR;
           opcodeRI = OPCODES.CMP_RI;
+        } else if (mnemonic === 'TEST') {
+          opcodeRR = OPCODES.TEST_RR;
+          opcodeRI = OPCODES.TEST_RI;
+        } else if (mnemonic === 'ADC') {
+          opcodeRR = OPCODES.ADC_RR;
+          opcodeRI = OPCODES.ADC_RI;
+        } else if (mnemonic === 'SBB') {
+          opcodeRR = OPCODES.SBB_RR;
+          opcodeRI = OPCODES.SBB_RI;
         }
 
         // Check if src is reg or imm
@@ -672,7 +867,9 @@ export class Assembler {
             srcReg.id,
             destReg.is16Bit,
             srcReg.is16Bit,
-            0
+            0,
+            false,
+            destReg.is8Bit
           );
         } catch {
           const imm = this.parseImmediate(srcStr, lineNum, labels);
@@ -682,7 +879,9 @@ export class Assembler {
             0,
             destReg.is16Bit,
             false,
-            imm
+            imm,
+            false,
+            destReg.is8Bit
           );
         }
       }
@@ -699,7 +898,8 @@ export class Assembler {
     destIs16: boolean,
     srcIs16: boolean,
     imm16: number,
-    isDirectMem: boolean = false
+    isDirectMem: boolean = false,
+    is8Bit: boolean = false
   ): number {
     const immClamped = imm16 & 0xffff;
     return (
@@ -709,6 +909,7 @@ export class Assembler {
         ((destIs16 ? 1 : 0) << 19) |
         ((srcIs16 ? 1 : 0) << 18) |
         ((isDirectMem ? 1 : 0) << 17) |
+        ((is8Bit ? 1 : 0) << 16) |
         immClamped) >>>
       0
     );

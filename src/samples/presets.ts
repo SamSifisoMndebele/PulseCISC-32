@@ -245,4 +245,143 @@ INT 0x80            ; Process exits cleanly!
 msg: DB "Hello from INT 0x80!", 0
 `,
   },
+  {
+    id: 'function_call_stack',
+    name: '10. CPU Concept: Subroutines & Call Stack (CALL & RET)',
+    description: 'Hardware stack and activation frames: uses PUSH, POP, CALL, and RET with standard calling convention.',
+    code: `; PulseCISC-32: Function Calls & Stack Frames
+; Demonstrates hardware stack operations:
+; 1. Caller pushes arguments to stack
+; 2. CALL pushes return address (EIP) and jumps
+; 3. Callee sets up stack frame using EBP
+; 4. RET pops return address back into EIP
+
+main:
+  MOV EAX, 15         ; Argument 1: a = 15
+  MOV EBX, 27         ; Argument 2: b = 27
+  PUSH EBX            ; Push arg 2
+  PUSH EAX            ; Push arg 1
+
+  CALL add_numbers    ; Call function! (pushes return EIP)
+  ADD ESP, 8          ; Clean up 2 arguments from stack (8 bytes)
+
+  PRINT EAX           ; Result returned in EAX (15 + 27 = 42)
+  HLT                 ; End of main
+
+add_numbers:
+  PUSH EBP            ; Save caller's base pointer
+  MOV EBP, ESP        ; Set up current stack frame
+
+  MOV EAX, [EBP + 8]  ; Load arg 1 (15)
+  MOV EDX, [EBP + 12] ; Load arg 2 (27)
+  ADD EAX, EDX        ; EAX = 15 + 27 = 42
+
+  MOV ESP, EBP        ; Restore stack pointer
+  POP EBP             ; Restore caller's base pointer
+  RET                 ; Return to caller!
+`,
+  },
+  {
+    id: 'recursive_factorial',
+    name: '11. CPU Concept: Recursive Functions (Stack Depth)',
+    description: 'Recursive Factorial (5! = 120): demonstrates stack growth, activation records, and base condition testing.',
+    code: `; PulseCISC-32: Recursive Factorial (5! = 120)
+; Demonstrates recursion and stack memory allocation
+
+main:
+  MOV EAX, 5          ; Calculate 5!
+  PUSH EAX            ; Pass n = 5
+  CALL factorial
+  ADD ESP, 4          ; Clean argument
+
+  PRINT EAX           ; Prints 120 (5!)
+  HLT
+
+factorial:
+  PUSH EBP
+  MOV EBP, ESP
+
+  MOV EBX, [EBP + 8]  ; EBX = n
+  CMP EBX, 1          ; Base case: if n <= 1, return 1
+  JLE base_case
+
+  ; Recursive case: return n * factorial(n - 1)
+  DEC EBX             ; n - 1
+  PUSH EBX
+  CALL factorial      ; Recursive call!
+  ADD ESP, 4          ; Clean argument (EAX now has factorial(n-1))
+
+  MOV EBX, [EBP + 8]  ; Reload n
+  IMUL EAX, EBX       ; EAX = factorial(n-1) * n
+  JMP fact_done
+
+base_case:
+  MOV EAX, 1          ; 1! = 1
+
+fact_done:
+  MOV ESP, EBP
+  POP EBP
+  RET
+`,
+  },
+  {
+    id: 'multi_precision_adc',
+    name: '12. CPU Concept: 64-bit Multi-Precision Math (ADC & CF)',
+    description: 'Multi-precision 64-bit addition using 32-bit registers, demonstrating the Carry Flag (CF) and ADC instruction.',
+    code: `; PulseCISC-32: 64-Bit Addition using 32-Bit ALU
+; Demonstrates Carry Flag (CF) propagation:
+; Number A: 0x00000001_FFFFFFFF (8,589,934,591)
+; Number B: 0x00000000_00000001 (1)
+; Sum:      0x00000002_00000000 (8,589,934,592)
+
+CLC                   ; Clear carry flag (CF = 0)
+
+; Lower 32 bits: 0xFFFFFFFF + 0x00000001 = 0x00000000 (CF = 1!)
+MOV EAX, 0xFFFFFFFF
+MOV EBX, 0x00000001
+ADD EAX, EBX          ; EAX = 0, Carry Flag (CF) turns ON!
+PRINT EAX             ; Output low 32 bits (0)
+
+; Upper 32 bits: 0x00000001 + 0x00000000 + Carry (1) = 0x00000002
+MOV ECX, 0x00000001
+MOV EDX, 0x00000000
+ADC ECX, EDX          ; ECX = 1 + 0 + CF(1) = 2
+PRINT ECX             ; Output high 32 bits (2)
+
+HLT
+`,
+  },
+  {
+    id: 'bit_shifts_twiddling',
+    name: '13. CPU Concept: Bit Shifts & Masking (SHL, SAR, TEST)',
+    description: 'Fast binary arithmetic and bit twiddling: SHL (x4), SAR (/2 signed), ROL, and TEST non-destructive masking.',
+    code: `; PulseCISC-32: Bit Shifts & Masking
+; Demonstrates arithmetic shifts and bitwise manipulation
+
+; 1. Fast multiplication by 4 via SHL (shift left by 2)
+MOV EAX, 12           ; 12 in binary: 0000 1100
+SHL EAX, 2            ; 12 * 4 = 48
+PRINT EAX
+
+; 2. Fast division of negative number via SAR (preserves sign!)
+MOV EBX, -16          ; -16
+SAR EBX, 1            ; -16 / 2 = -8 (sign bit preserved)
+PRINT EBX
+
+; 3. Rotate bits (ROL)
+MOV ECX, 0x0000000F   ; Lower 4 bits set
+ROL ECX, 4            ; Rotate into next nibble: 0x000000F0
+PRINT ECX
+
+; 4. Non-destructive bit testing (TEST)
+TEST ECX, 0x000000F0  ; AND without modifying ECX; sets ZF=0
+JNE bit_set
+PRINT 0
+HLT
+
+bit_set:
+PRINT 1               ; Bit was set!
+HLT
+`,
+  },
 ];

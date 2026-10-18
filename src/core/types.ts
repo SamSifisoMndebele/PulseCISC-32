@@ -4,6 +4,7 @@ export type CPUPhase = 'FETCH' | 'DECODE' | 'EXECUTE' | 'MEMORY' | 'WRITEBACK' |
 
 export type Mnemonic =
   | 'MOV'
+  | 'MOVH'
   | 'ADD'
   | 'SUB'
   | 'AND'
@@ -11,8 +12,63 @@ export type Mnemonic =
   | 'XOR'
   | 'CMP'
   | 'JE'
+  | 'JZ'
   | 'JNE'
+  | 'JNZ'
+  | 'JL'
+  | 'JNGE'
+  | 'JLE'
+  | 'JNG'
+  | 'JG'
+  | 'JNLE'
+  | 'JGE'
+  | 'JNL'
+  | 'JB'
+  | 'JC'
+  | 'JNAE'
+  | 'JBE'
+  | 'JNA'
+  | 'JA'
+  | 'JNBE'
+  | 'JAE'
+  | 'JNC'
+  | 'JNB'
+  | 'JS'
+  | 'JNS'
+  | 'JO'
+  | 'JNO'
   | 'JMP'
+  | 'LOOP'
+  | 'CALL'
+  | 'RET'
+  | 'PUSH'
+  | 'POP'
+  | 'LEA'
+  | 'XCHG'
+  | 'INC'
+  | 'DEC'
+  | 'NEG'
+  | 'NOT'
+  | 'TEST'
+  | 'ADC'
+  | 'SBB'
+  | 'SHL'
+  | 'SAL'
+  | 'SHR'
+  | 'SAR'
+  | 'ROL'
+  | 'ROR'
+  | 'MUL'
+  | 'IMUL'
+  | 'DIV'
+  | 'IDIV'
+  | 'CLC'
+  | 'STC'
+  | 'CMC'
+  | 'MOVB'
+  | 'MOVZX'
+  | 'MOVSX'
+  | 'NOP'
   | 'HLT'
   | 'PRINT'
   | 'INT'
@@ -40,10 +96,21 @@ export type SubRegisterName =
   | 'BP'
   | 'SP';
 
+export type ByteRegisterName =
+  | 'AL'
+  | 'BL'
+  | 'CL'
+  | 'DL'
+  | 'AH'
+  | 'BH'
+  | 'CH'
+  | 'DH';
+
 export interface EFLAGS {
   zf: boolean; // Zero flag
   sf: boolean; // Sign flag (negative)
   of: boolean; // Overflow flag
+  cf: boolean; // Carry flag (unsigned overflow / borrow)
 }
 
 export type OperandType = 'REG' | 'IMM' | 'MEM' | 'NONE';
@@ -52,10 +119,13 @@ export interface Operand {
   type: OperandType;
   reg?: RegisterId;
   is16Bit?: boolean;
+  is8Bit?: boolean;
+  is8BitHigh?: boolean;
   imm?: number;
   memBaseReg?: RegisterId;
   memOffset?: number;
   isDirect?: boolean;
+  isByte?: boolean;
   label?: string;
   stringPayload?: string;
   rawString: string;

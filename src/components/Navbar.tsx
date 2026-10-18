@@ -5,12 +5,12 @@ import {
   Pause,
   SkipForward,
   RotateCcw,
-  Cpu,
   Zap,
   Settings,
   Database,
   BookOpen,
 } from 'lucide-react';
+import { PulseLogo } from './PulseLogo';
 import { PRESETS } from '../samples/presets';
 
 interface NavbarProps {
@@ -46,11 +46,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="flex flex-wrap items-center justify-between px-5 py-2.5 bg-[#0d121d] border-b border-slate-800 text-slate-100 select-none gap-3">
       {/* Brand & Architecture Identity */}
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-sky-500 to-emerald-400 p-[1px] shadow-lg shadow-sky-500/20">
-          <div className="flex items-center justify-center w-full h-full bg-[#090d16] rounded-[11px]">
-            <Cpu className="w-4 h-4 text-sky-400" />
-          </div>
-        </div>
+        <PulseLogo size={36} className="transition-transform duration-200 hover:scale-105 cursor-pointer" />
         <div>
           <div className="flex items-center gap-2">
             <span className="font-bold text-base tracking-tight text-white font-mono">

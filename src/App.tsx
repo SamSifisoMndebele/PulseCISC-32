@@ -15,6 +15,7 @@ import { MemoryGridView } from './components/MemoryGridView';
 import { TraceLogView } from './components/TraceLogView';
 import { CheatsheetModal } from './components/CheatsheetModal';
 import { SettingsModal } from './components/SettingsModal';
+import { ScreenSizeGuard } from './components/ScreenSizeGuard';
 import {
   type SystemConfig,
   loadSystemConfig,
@@ -291,8 +292,9 @@ export function App() {
   }, [handleToggleRun, handleStepInstruction, handleStepMicro]);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#070a10] text-slate-100 select-none">
-      {/* Top Navigation Bar */}
+    <ScreenSizeGuard minWidth={1024} minHeight={576}>
+      <div className="flex flex-col h-full w-full overflow-hidden bg-[#070a10] text-slate-100 select-none">
+        {/* Top Navigation Bar */}
       <Navbar
         isRunning={isRunning}
         onToggleRun={handleToggleRun}
@@ -459,6 +461,7 @@ export function App() {
         onSaveConfig={handleApplyConfig}
       />
     </div>
+  </ScreenSizeGuard>
   );
 }
 

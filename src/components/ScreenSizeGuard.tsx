@@ -1,5 +1,5 @@
 // PulseCISC-32 Screen Size Guard
-// Requires minimum 1024x720 resolution in landscape orientation
+// Requires minimum 1024x576 resolution in landscape orientation
 import React, { useState, useEffect } from 'react';
 import {
   RotateCw,
@@ -116,12 +116,12 @@ export const ScreenSizeGuard: React.FC<ScreenSizeGuardProps> = ({
               <h1 className="text-lg font-bold text-white">
                 {!isLandscape
                   ? 'Please rotate to landscape'
-                  : 'Minimum 1024 × 720 screen required'}
+                  : 'Minimum 1024 × 576 screen required'}
               </h1>
               <p className="text-xs text-slate-400 leading-relaxed">
                 {!isLandscape
                   ? 'This application requires landscape orientation to display the CPU datapath and registers properly.'
-                  : 'This application is designed for big screens (laptops, tablets, or large unfolded displays) with a minimum of 1024 × 720 in landscape.'}
+                  : 'This application is designed for big screens (laptops, tablets, or large unfolded displays) with a minimum of 1024 × 576 in landscape.'}
               </p>
             </div>
 

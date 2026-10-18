@@ -1,4 +1,4 @@
-// PulseCISC-32 / PulseRISC-32 Dynamic RAM Memory Viewer
+// PulseCISC-32 Dynamic RAM Memory Viewer
 import React, { useState, useEffect } from 'react';
 import { Memory } from '../core/memory';
 import { toHex32 } from '../core/isa';

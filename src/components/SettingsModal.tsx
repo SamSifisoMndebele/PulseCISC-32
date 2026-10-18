@@ -1,4 +1,4 @@
-// PulseCISC-32 / PulseRISC-32 System Configuration & Preferences Modal
+// PulseCISC-32 System Configuration & Preferences Modal
 import React, { useState, useEffect } from 'react';
 import {
   X,

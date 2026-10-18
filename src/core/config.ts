@@ -1,4 +1,4 @@
-// PulseCISC-32 / PulseRISC-32 System Configuration & Preferences
+// PulseCISC-32 System Configuration & Preferences
 export interface SystemConfig {
   memorySize: number; // in bytes: 4096 (4KB), 8192 (8KB), 16384 (16KB), 32768 (32KB), 65536 (64KB - default)
   dataStart: number; // default 0x0800

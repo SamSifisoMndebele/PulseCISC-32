@@ -1,4 +1,4 @@
-// PulseRISC-32 / PulseCISC-32 Segmented Byte-Addressable Memory
+// PulseCISC-32 Segmented Byte-Addressable Memory
 import { toUint32 } from './isa';
 
 export const DEFAULT_MEMORY_SIZE = 65536; // 64 KB (Updated standard)

@@ -1,4 +1,4 @@
-// PulseCISC-32 Assembled Machine Code Inspector
+// PulseCISC-32 Assembled Variable-Length x86 Machine Code Inspector
 import React from 'react';
 import { Disassembler } from '../core/disassembler';
 import type { DisassembledLine } from '../core/disassembler';
@@ -19,10 +19,10 @@ export const MachineCodeView: React.FC<MachineCodeViewProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900/80 border-b border-slate-800">
         <span className="font-semibold text-xs text-slate-200">
-          Machine Code & Disassembly
+          x86 Machine Code & Disassembly
         </span>
         <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
-          {lines.length} instructions ({codeBytes.length} bytes)
+          {lines.length} inst ({codeBytes.length} bytes)
         </span>
       </div>
 
@@ -34,34 +34,37 @@ export const MachineCodeView: React.FC<MachineCodeViewProps> = ({
           </div>
         ) : (
           lines.map((line) => {
-            const isActive = line.address === (currentEIP & ~0x3);
+            const isActive = line.address === currentEIP;
 
             return (
               <div
                 key={line.address}
-                className={`flex items-center justify-between px-2.5 py-1.5 rounded border transition-all ${
+                className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded border transition-all ${
                   isActive
                     ? 'bg-emerald-950/40 border-emerald-500/80 text-emerald-200 shadow-md shadow-emerald-500/10'
                     : 'bg-slate-900/40 border-slate-800/80 hover:border-slate-700 text-slate-300'
                 }`}
               >
                 {/* Pointer & Address */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <span className={`w-3 text-emerald-400 font-bold ${isActive ? 'animate-pulse' : 'opacity-0'}`}>
                     ▶
                   </span>
                   <span className="text-sky-400 font-mono">
                     0x{line.address.toString(16).padStart(4, '0').toUpperCase()}
                   </span>
+                  <span className="text-[9px] text-slate-500 bg-slate-800/80 px-1 rounded">
+                    {line.byteLength}B
+                  </span>
                 </div>
 
-                {/* Hex Word */}
-                <span className="text-slate-400 font-mono text-[11px]">
+                {/* Variable-Length x86 Hex Bytes */}
+                <span className="text-amber-300/90 font-mono text-[10px] truncate max-w-[145px]" title={line.hex}>
                   {line.hex}
                 </span>
 
                 {/* Disassembled Assembly String */}
-                <span className={`font-semibold font-mono ${isActive ? 'text-emerald-300' : 'text-slate-200'}`}>
+                <span className={`font-semibold font-mono text-right truncate ${isActive ? 'text-emerald-300' : 'text-slate-200'}`}>
                   {line.assembly}
                 </span>
               </div>

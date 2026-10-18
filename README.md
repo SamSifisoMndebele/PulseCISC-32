@@ -47,165 +47,90 @@ It provides a complete multi-cycle CPU simulation with real-time visual datapath
 
 ---
 
-## Machine Word Format (32-Bit Fixed Width)
+## Variable-Length x86 Machine Code Format (1 to 11 Bytes)
 
-All instructions are encoded into fixed 32-bit (4-byte) little-endian machine words:
+PulseCISC-32 encodes instructions into an authentic **variable-length x86 instruction byte stream**:
 
 ```
- 31        26 25    23 22    20 19      18     17     16 15                    0
-+------------+--------+--------+-------+------+------+------+--------------------+
-|   Opcode   | DestReg| SrcReg |Dest16 |Src16 |Direct| Byte |    Imm16 / Offset  |
-|   (6 bits) |(3 bits)|(3 bits)| (1 b) |(1 b) |(1 b) |(1 b) |      (16 bits)     |
-+------------+--------+--------+-------+------+------+------+--------------------+
++----------------+---------------+-------------------+-------------------+--------------------+--------------------+
+| Prefix (0-1B)  | Opcode (1-2B) |   ModR/M (0-1B)   |    SIB (0-1B)     |   Disp8 / Disp32   |  Imm8 / 16 / 32    |
+| REP / OpSize   | Primary / 0Fh | [mod(2)|reg|rm(3)]| [scale|index|base]|   (0, 1, or 4 B)   |  (0, 1, 2, or 4 B) |
++----------------+---------------+-------------------+--------------------+--------------------+--------------------+
 ```
 
-* **Opcode `[31:26]`**: 6-bit operation code (`0x00` - `0x3F`).
-* **DestReg `[25:23]`**: Destination register index (`0` - `7`).
-* **SrcReg `[22:20]`**: Source register or base address register index (`0` - `7`).
-* **DestIs16 `[19]`**: `1` if destination is 16-bit sub-register (`AX`..`SP`).
-* **SrcIs16 `[18]`**: `1` if source is 16-bit sub-register or immediate shift flag.
-* **IsDirectMem `[17]`**: `1` for direct address displacement (`[0x2000]`).
-* **IsByte `[16]`**: `1` for 8-bit byte transfers (`MOVB`, `AL`..`DH`).
-* **Imm16 `[15:0]`**: 16-bit signed immediate operand or memory displacement offset.
-* *Jump Instructions (`JMP`, `CALL`, `JE`, etc.) use bits `[25:0]` to encode target word addresses.*
+| Assembly Instruction | Assembled x86 Bytes (Hex) | Size | Description |
+| :--- | :--- | :---: | :--- |
+| `NOP` / `RET` / `LEAVE` / `CDQ` | `90` / `C3` / `C9` / `99` | **1 B** | Single-byte x86 opcodes |
+| `PUSH EBP` / `POP EAX` / `INC ECX` | `55` / `58` / `41` | **1 B** | Register-embedded single-byte opcodes |
+| `MOV EBP, ESP` / `ADD EAX, EBX` | `89 E5` / `01 D8` | **2 B** | `Opcode` + `ModR/M (mod=11)` |
+| `RET 12` / `SUB ESP, 8` | `C2 0C 00` / `83 EC 08` | **3 B** | `STDCALL` return cleanup / `imm8` ALU |
+| `MOV EAX, [EBX + ESI*4 + 16]` | `8B 44 B3 10` | **4 B** | `Opcode` + `ModR/M` + `SIB` + `disp8` |
+| `MOV EAX, 0x12345678` | `B8 78 56 34 12` | **5 B** | Full 32-bit immediate load |
 
 ---
 
-## Register Architecture
+## High-Level MASM Directives & Complex Addressing
 
-The processor contains 8 general-purpose 32-bit registers with authentic x86 aliasing:
+### 1. MASM Directives (`masmPreprocessor.ts`)
+* **Module & Model Headers**: `.386`..`.686`, `.MODEL FLAT, STDCALL` (and `C`), `OPTION CASEMAP:NONE`, `.STACK`, `.DATA`, `.CODE`, `END [main]`.
+* **Procedures & Automatic Stack Frames**:
+  * `MyProc PROC [USES reg1 reg2,] [arg1:DWORD, arg2:DWORD]` ... `MyProc ENDP`
+  * `LOCAL var1:DWORD, buffer[16]:BYTE` — automatically generates `PUSH EBP` / `MOV EBP, ESP` / `SUB ESP, N` prologue, maps parameter & local names to `[EBP + offset]` / `[EBP - offset]`, and expands `RET` into `LEAVE` + `RET paramBytes`.
+* **`INVOKE` Directive**:
+  * `INVOKE MyProc, arg1, arg2, ADDR localVar` — pushes arguments right-to-left, resolves `ADDR` via `LEA` or `OFFSET`, and emits `CALL MyProc` (also supports `INVOKE ExitProcess, status`).
+* **Custom Structures (`STRUCT ... ENDS`)**:
+  * Defines typed fields, computes byte offsets (`[EBX + ItemRecord.price]`), and supports `<...>` instance initialization in `.DATA`.
+* **Structured Control Flow**:
+  * `.IF`, `.ELSEIF`, `.ELSE`, `.ENDIF`, `.WHILE`, `.ENDW`, `.REPEAT`, `.UNTIL`, `.BREAK`, `.CONTINUE` with relational operators (`==`, `!=`, `>`, `>=`, `<`, `<=`) and flag tests (`ZERO?`, `CARRY?`, `SIGN?`).
+* **Data Allocation & Compile-Time Operators**:
+  * `BYTE`/`DB`, `WORD`/`DW`, `DWORD`/`DD`, `DUP(...)`, uninitialized `?`, `EQU` / `=`, `OFFSET`, `SIZEOF`, `LENGTHOF`, `TYPE`.
 
+### 2. Complex Scale-Index-Base (SIB) Addressing
+* **Direct & Bare Variable Access**: `[0x2000]`, `[myVar]`, or bare MASM variable `MOV EAX, myVar`.
+* **Base + Displacement**: `[EBP + 8]`, `[EBP - 4]`, `[EBX + ItemRecord.price]`.
+* **Scaled-Index**: `[ESI * 4]`, `scores[ECX * 4]`.
+* **Full SIB (`[Base + Index * Scale + Disp]`)**: `[EBX + ESI*4 + 16]`, `matrix[EBX][ESI*4]`, `[EAX + EDX]` where `Scale` $\in \{1, 2, 4, 8\}$.
+* **Size & Segment Qualifiers**: `BYTE PTR`, `WORD PTR`, `DWORD PTR`, and segment overrides `CS:`, `DS:`, `SS:`, `ES:`, `FS:`, `GS:`.
+
+---
+
+## Register Architecture & Segment Selectors
+
+### General-Purpose Registers
 | ID | 32-Bit Register | 16-Bit Sub-Register | 8-Bit Low | 8-Bit High | Typical Role |
 | :---: | :---: | :---: | :---: | :---: | :--- |
-| `0` | **EAX** | `AX` | `AL` | `AH` | Accumulator, Multiplication/Division, Syscall Service / Return |
-| `1` | **EBX** | `BX` | `BL` | `BH` | Base Pointer, Syscall Argument 1 |
-| `2` | **ECX** | `CX` | `CL` | `CH` | Loop Counter (`LOOP`, shift count), Syscall Argument 2 |
-| `3` | **EDX** | `DX` | `DL` | `DH` | Data Register, High 32 bits in `MUL`/`DIV`, Syscall Argument 3 |
-| `4` | **ESI** | `SI` | — | — | Source Index (string & array operations) |
-| `5` | **EDI** | `DI` | — | — | Destination Index (string & array operations) |
-| `6` | **EBP** | `BP` | — | — | Stack Frame Base Pointer |
+| `0` | **EAX** | `AX` | `AL` | `AH` | Accumulator, Multiply/Divide, Return Value |
+| `1` | **EBX** | `BX` | `BL` | `BH` | Base Pointer |
+| `2` | **ECX** | `CX` | `CL` | `CH` | Loop & `REP` Counter (`LOOP`, `REP`, shifts) |
+| `3` | **EDX** | `DX` | `DL` | `DH` | Data Register, High 32 bits in `MUL`/`DIV`/`CDQ` |
+| `4` | **ESI** | `SI` | — | — | Source Index (`MOVSB`/`LODSB`, array indexing) |
+| `5` | **EDI** | `DI` | — | — | Destination Index (`MOVSB`/`STOSB`, array indexing) |
+| `6` | **EBP** | `BP` | — | — | Stack Frame Base Pointer (`PROC` params & `LOCAL`s) |
 | `7` | **ESP** | `SP` | — | — | Stack Pointer (defaults to top of RAM, e.g. `0xFFFC`) |
 
----
+### Segment Selectors (`.MODEL FLAT` Protected Mode)
+* **`CS` (`0x001B`)**: Code Segment Selector
+* **`DS` (`0x0023`)**: Data Segment Selector
+* **`SS` (`0x0023`)**: Stack Segment Selector
+* **`ES` (`0x0023`), `FS` (`0x003B`), `GS` (`0x0000`)**: Extra & Thread Environment Segment Selectors
 
-## Condition Codes (`EFLAGS`)
-
-The CPU evaluates 4 architectural condition flags on arithmetic and comparison operations:
-
-* **`ZF` (Zero Flag)**: Set to `1` when an operation result is zero (`0`).
-* **`SF` (Sign Flag)**: Set to `1` when the most significant bit (bit 31) is `1` (negative in two's complement).
-* **`OF` (Overflow Flag)**: Set to `1` on signed two's complement arithmetic overflow.
-* **`CF` (Carry Flag)**: Set to `1` on unsigned overflow or borrow; controlled directly via `CLC`, `STC`, and `CMC`.
+### Condition & Direction Flags (`EFLAGS`)
+* **`ZF` (Zero Flag)**, **`SF` (Sign Flag)**, **`OF` (Overflow Flag)**, **`CF` (Carry Flag)**, and **`DF` (Direction Flag: `0` = forward, `1` = backward for string operations)**.
 
 ---
 
-## Complete Instruction Set Reference (64 Opcodes)
+## Instruction Set Summary
 
-### 1. Data Movement & Memory
-| Mnemonic | Opcode | Syntax | Description |
-| :--- | :---: | :--- | :--- |
-| `MOV` | `0x01` | `MOV reg, reg` | Copy 32/16/8-bit register |
-| `MOV` | `0x02` | `MOV reg, imm` | Load 16-bit immediate constant |
-| `MOV` | `0x03` | `MOV reg, [mem]` | Load 32-bit word from memory (`[reg]`, `[reg + offset]`, `[addr]`) |
-| `MOV` | `0x04` | `MOV [mem], reg` | Store 32-bit word to memory |
-| `MOVH` | `0x14` | `MOVH reg, imm` | Load upper 16 bits of register (`reg[31:16] = imm`) |
-| `MOVB` | `0x3D` | `MOVB reg, [mem]` | Load 8-bit byte from RAM (zero-extended) |
-| `MOVB` | `0x3E` | `MOVB [mem], reg` | Store 8-bit byte to RAM (`MOV BYTE [mem], reg`) |
-| `LEA` | `0x28` | `LEA reg, [mem]` | Load Effective Address (pointer calculation without RAM read) |
-| `XCHG` | `0x29` | `XCHG reg, reg` | Atomically swap two register values |
+| Category | Supported Mnemonics |
+| :--- | :--- |
+| **Data Movement & Extension** | `MOV`, `MOVB`, `MOVW`, `MOVH`, `MOVZX`, `MOVSX`, `LEA`, `XCHG`, `XADD`, `CMPXCHG`, `BSWAP`, `CMOVcc` (`CMOVE`, `CMOVNE`, `CMOVG`, `CMOVGE`, `CMOVL`, `CMOVLE`, `CMOVA`, `CMOVB`, etc.) |
+| **Stack & Procedure Frames** | `PUSH`, `POP`, `PUSHAD`/`PUSHA`, `POPAD`/`POPA`, `PUSHFD`/`PUSHF`, `POPFD`/`POPF`, `CALL`, `RET [imm16]`, `ENTER`, `LEAVE` |
+| **Arithmetic & Conversion** | `ADD`, `ADC`, `SUB`, `SBB`, `INC`, `DEC`, `NEG`, `MUL`, `IMUL` (1/2/3-op), `DIV`, `IDIV`, `CBW`, `CWDE`, `CWD`, `CDQ` |
+| **Bitwise, Shifts & Bit Scan** | `AND`, `OR`, `XOR`, `NOT`, `TEST`, `CMP`, `SHL`/`SAL`, `SHR`, `SAR`, `ROL`, `ROR`, `BT`, `BTS`, `BTR`, `BTC`, `BSF`, `BSR`, `SETcc` |
+| **String & Block Primitives** | `MOVSB`, `MOVSW`, `MOVSD`, `STOSB`, `STOSW`, `STOSD`, `LODSB`, `LODSW`, `LODSD`, `CMPSB`, `CMPSW`, `CMPSD`, `SCASB`, `SCASW`, `SCASD` + `REP`/`REPE`/`REPNE` |
+| **Control Flow & Loops** | `JMP`, `JE`/`JZ`, `JNE`/`JNZ`, `JL`, `JLE`, `JG`, `JGE`, `JB`/`JC`, `JBE`, `JA`, `JAE`/`JNC`, `JS`, `JNS`, `JO`, `JNO`, `JECXZ`, `LOOP`, `LOOPE`/`LOOPZ`, `LOOPNE`/`LOOPNZ` |
+| **Flags & System Control** | `CLC`, `STC`, `CMC`, `CLD`, `STD`, `LAHF`, `SAHF`, `NOP`, `HLT`, `PRINT`, `INT 0x80` / `SYSCALL` |
 
-### 2. Stack & Subroutines (Function Calls)
-| Mnemonic | Opcode | Syntax | Description |
-| :--- | :---: | :--- | :--- |
-| `PUSH` | `0x26` | `PUSH reg / imm` | Decrement `ESP` by 4, write value to `RAM[ESP]` |
-| `POP` | `0x27` | `POP reg` | Read value from `RAM[ESP]`, increment `ESP` by 4 |
-| `CALL` | `0x24` | `CALL target` | Push return address (`EIP`) to stack and branch to subroutine |
-| `RET` | `0x25` | `RET` | Pop return address from stack into `EIP` |
-
-### 3. Arithmetic Operations
-| Mnemonic | Opcode | Syntax | Description | Flags |
-| :--- | :---: | :--- | :--- | :---: |
-| `ADD` | `0x05 / 0x06` | `ADD dest, src/imm` | Addition: `dest = dest + src` | `ZF, SF, OF, CF` |
-| `ADC` | `0x30 / 0x31` | `ADC dest, src/imm` | Add with Carry: `dest = dest + src + CF` | `ZF, SF, OF, CF` |
-| `SUB` | `0x07 / 0x08` | `SUB dest, src/imm` | Subtraction: `dest = dest - src` | `ZF, SF, OF, CF` |
-| `SBB` | `0x32 / 0x33` | `SBB dest, src/imm` | Subtract with Borrow: `dest = dest - src - CF` | `ZF, SF, OF, CF` |
-| `INC` | `0x2A` | `INC reg` | Increment register by 1 (preserves `CF`) | `ZF, SF, OF` |
-| `DEC` | `0x2B` | `DEC reg` | Decrement register by 1 (preserves `CF`) | `ZF, SF, OF` |
-| `NEG` | `0x2C` | `NEG reg` | Two's complement negation: `reg = 0 - reg` | `ZF, SF, OF, CF` |
-| `MUL` | `0x39` | `MUL src` | Unsigned multiply: `EDX:EAX = EAX * src` | `CF, OF, ZF, SF` |
-| `IMUL` | `0x39` | `IMUL reg, reg/imm`| Signed 32-bit multiply: `dest = dest * src` | `CF, OF, ZF, SF` |
-| `DIV` | `0x3A` | `DIV src` | Unsigned divide: `EAX = quot, EDX = rem` | Traps `#DE` on 0 |
-| `IDIV` | `0x3B` | `IDIV src` | Signed divide: `EAX = quot, EDX = rem` | Traps `#DE` on 0 |
-
-### 4. Logic, Shifts & Comparisons
-| Mnemonic | Opcode | Syntax | Description | Flags |
-| :--- | :---: | :--- | :--- | :---: |
-| `AND` | `0x09 / 0x0A` | `AND dest, src/imm` | Bitwise AND | `ZF, SF` (`CF=0, OF=0`) |
-| `OR` | `0x0B / 0x0C` | `OR dest, src/imm` | Bitwise OR | `ZF, SF` (`CF=0, OF=0`) |
-| `XOR` | `0x0D / 0x0E` | `XOR dest, src/imm` | Bitwise XOR (`XOR EAX, EAX` zeroes reg) | `ZF, SF` (`CF=0, OF=0`) |
-| `NOT` | `0x2D` | `NOT reg` | Bitwise inversion (one's complement) | None |
-| `CMP` | `0x0F / 0x10` | `CMP dest, src/imm` | Non-destructive `dest - src`, sets condition flags | `ZF, SF, OF, CF` |
-| `TEST` | `0x2E / 0x2F` | `TEST dest, src/imm`| Non-destructive `dest & src`, sets condition flags | `ZF, SF` (`CF=0, OF=0`) |
-| `SHL` / `SAL` | `0x34` | `SHL reg, imm/CL` | Logical shift left (multiplies by $2^n$) | `CF, OF, ZF, SF` |
-| `SHR` | `0x35` | `SHR reg, imm/CL` | Logical shift right (zero-fill high bits) | `CF, OF, ZF, SF` |
-| `SAR` | `0x36` | `SAR reg, imm/CL` | Arithmetic shift right (preserves sign bit) | `CF, OF, ZF, SF` |
-| `ROL` | `0x37` | `ROL reg, imm/CL` | Rotate bits left | `CF, OF` |
-| `ROR` | `0x38` | `ROR reg, imm/CL` | Rotate bits right | `CF, OF` |
-
-### 5. Control Flow & Branching
-| Mnemonic | Opcode | Condition / Test | Semantics |
-| :--- | :---: | :--- | :--- |
-| `JMP` | `0x13` | Always taken | Unconditional jump |
-| `LOOP` | `0x23` | `ECX = ECX - 1; ECX != 0` | Hardware loop iteration |
-| `JE` / `JZ` | `0x11` | `ZF == 1` | Jump if Equal / Zero |
-| `JNE` / `JNZ` | `0x12` | `ZF == 0` | Jump if Not Equal / Non-Zero |
-| `JL` / `JNGE` | `0x17` | `SF != OF` | Jump if Less (Signed) |
-| `JLE` / `JNG` | `0x18` | `ZF == 1 || SF != OF` | Jump if Less or Equal (Signed) |
-| `JG` / `JNLE` | `0x19` | `ZF == 0 && SF == OF` | Jump if Greater (Signed) |
-| `JGE` / `JNL` | `0x1A` | `SF == OF` | Jump if Greater or Equal (Signed) |
-| `JB` / `JC` | `0x1B` | `CF == 1` | Jump if Below / Carry (Unsigned) |
-| `JBE` / `JNA` | `0x1C` | `CF == 1 || ZF == 1` | Jump if Below or Equal (Unsigned) |
-| `JA` / `JNBE` | `0x1D` | `CF == 0 && ZF == 0` | Jump if Above (Unsigned) |
-| `JAE` / `JNC` | `0x1E` | `CF == 0` | Jump if Above or Equal / No Carry (Unsigned) |
-| `JS` | `0x1F` | `SF == 1` | Jump if Sign (Negative) |
-| `JNS` | `0x20` | `SF == 0` | Jump if Not Sign (Positive) |
-| `JO` | `0x21` | `OF == 1` | Jump if Overflow |
-| `JNO` | `0x22` | `OF == 0` | Jump if No Overflow |
-
-### 6. Flags & Processor Control
-| Mnemonic | Opcode | Syntax | Description |
-| :--- | :---: | :--- | :--- |
-| `NOP` | `0x00` | `NOP` | No operation |
-| `CLC` | `0x3C` | `CLC` | Clear Carry Flag (`CF = 0`) |
-| `STC` | `0x3C` | `STC` | Set Carry Flag (`CF = 1`) |
-| `CMC` | `0x3C` | `CMC` | Complement Carry Flag (`CF = !CF`) |
-| `PRINT` | `0x15` | `PRINT reg / imm` | Print decimal & hex to console |
-| `INT 0x80` | `0x16` | `INT 0x80` | Trigger kernel system call |
-| `HLT` | `0x3F` | `HLT` | Freeze CPU clock |
-
----
-
-## Authentic Linux System Calls (`INT 0x80`)
-
-The simulator implements real Linux x86 kernel services invoked with `INT 0x80`:
-
-| `EAX` Value | Service | Arguments | Description |
-| :---: | :--- | :--- | :--- |
-| **`1`** | `sys_exit` | `EBX: exit_code` | Halts execution and prints termination status. |
-| **`4`** | `sys_write` | `EBX: fd`<br>`ECX: buf_addr`<br>`EDX: count` | Writes string from RAM to standard output (`fd=1`) or error (`fd=2`). Returns bytes written in `EAX`. |
-| **`5`** | `sys_print_int` | `EBX: value` | Outputs signed integer and hex representation to console. |
-| **`11`** | `sys_print_char`| `EBX: ascii_code` | Outputs single ASCII character to console. |
-
----
-
-## Assembler Directives
-
-Supported for static data segment layout:
-
-* **`DB` / `BYTE`**: Define 8-bit bytes or strings (`msg: DB "Hello, world!\n", 0` or `nums: DB 1, 2, 3`).
-* **`DW` / `WORD`**: Define 16-bit words (little-endian).
-* **`DD`**: Define 32-bit double words (little-endian).
-* **`section .data` / `section .text`**: Section demarcations (cleanly parsed and mapped).
 
 ---
 

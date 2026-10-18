@@ -4,13 +4,20 @@ export type CPUPhase = 'FETCH' | 'DECODE' | 'EXECUTE' | 'MEMORY' | 'WRITEBACK' |
 
 export type Mnemonic =
   | 'MOV'
+  | 'MOVB'
+  | 'MOVW'
   | 'MOVH'
+  | 'MOVZX'
+  | 'MOVSX'
   | 'ADD'
+  | 'ADC'
   | 'SUB'
+  | 'SBB'
   | 'AND'
   | 'OR'
   | 'XOR'
   | 'CMP'
+  | 'TEST'
   | 'JE'
   | 'JZ'
   | 'JNE'
@@ -38,20 +45,36 @@ export type Mnemonic =
   | 'JO'
   | 'JNO'
   | 'JMP'
+  | 'JECXZ'
+  | 'JCXZ'
   | 'LOOP'
+  | 'LOOPE'
+  | 'LOOPZ'
+  | 'LOOPNE'
+  | 'LOOPNZ'
   | 'CALL'
   | 'RET'
+  | 'ENTER'
+  | 'LEAVE'
   | 'PUSH'
   | 'POP'
+  | 'PUSHAD'
+  | 'POPAD'
+  | 'PUSHA'
+  | 'POPA'
+  | 'PUSHFD'
+  | 'POPFD'
+  | 'PUSHF'
+  | 'POPF'
   | 'LEA'
   | 'XCHG'
+  | 'XADD'
+  | 'CMPXCHG'
+  | 'BSWAP'
   | 'INC'
   | 'DEC'
   | 'NEG'
   | 'NOT'
-  | 'TEST'
-  | 'ADC'
-  | 'SBB'
   | 'SHL'
   | 'SAL'
   | 'SHR'
@@ -62,12 +85,86 @@ export type Mnemonic =
   | 'IMUL'
   | 'DIV'
   | 'IDIV'
+  | 'CBW'
+  | 'CWDE'
+  | 'CWD'
+  | 'CDQ'
   | 'CLC'
   | 'STC'
   | 'CMC'
-  | 'MOVB'
-  | 'MOVZX'
-  | 'MOVSX'
+  | 'CLD'
+  | 'STD'
+  | 'LAHF'
+  | 'SAHF'
+  | 'MOVSB'
+  | 'MOVSW'
+  | 'MOVSD'
+  | 'STOSB'
+  | 'STOSW'
+  | 'STOSD'
+  | 'LODSB'
+  | 'LODSW'
+  | 'LODSD'
+  | 'CMPSB'
+  | 'CMPSW'
+  | 'CMPSD'
+  | 'SCASB'
+  | 'SCASW'
+  | 'SCASD'
+  | 'CMOVE'
+  | 'CMOVZ'
+  | 'CMOVNE'
+  | 'CMOVNZ'
+  | 'CMOVG'
+  | 'CMOVNLE'
+  | 'CMOVGE'
+  | 'CMOVNL'
+  | 'CMOVL'
+  | 'CMOVNGE'
+  | 'CMOVLE'
+  | 'CMOVNG'
+  | 'CMOVA'
+  | 'CMOVNBE'
+  | 'CMOVAE'
+  | 'CMOVNB'
+  | 'CMOVNC'
+  | 'CMOVB'
+  | 'CMOVNAE'
+  | 'CMOVC'
+  | 'CMOVBE'
+  | 'CMOVNA'
+  | 'CMOVS'
+  | 'CMOVNS'
+  | 'SETE'
+  | 'SETZ'
+  | 'SETNE'
+  | 'SETNZ'
+  | 'SETG'
+  | 'SETNLE'
+  | 'SETGE'
+  | 'SETNL'
+  | 'SETL'
+  | 'SETNGE'
+  | 'SETLE'
+  | 'SETNG'
+  | 'SETA'
+  | 'SETNBE'
+  | 'SETAE'
+  | 'SETNB'
+  | 'SETNC'
+  | 'SETB'
+  | 'SETNAE'
+  | 'SETC'
+  | 'SETBE'
+  | 'SETNA'
+  | 'SETS'
+  | 'SETNS'
+  | 'BT'
+  | 'BTS'
+  | 'BTR'
+  | 'BTC'
+  | 'BSF'
+  | 'BSR'
   | 'NOP'
   | 'HLT'
   | 'PRINT'
@@ -106,11 +203,23 @@ export type ByteRegisterName =
   | 'CH'
   | 'DH';
 
+export type SegmentRegisterName = 'CS' | 'DS' | 'SS' | 'ES' | 'FS' | 'GS';
+
+export interface SegmentRegisters {
+  cs: number;
+  ds: number;
+  ss: number;
+  es: number;
+  fs: number;
+  gs: number;
+}
+
 export interface EFLAGS {
   zf: boolean; // Zero flag
   sf: boolean; // Sign flag (negative)
   of: boolean; // Overflow flag
   cf: boolean; // Carry flag (unsigned overflow / borrow)
+  df?: boolean; // Direction flag (0 = forward, 1 = backward for string ops)
 }
 
 export type OperandType = 'REG' | 'IMM' | 'MEM' | 'NONE';
@@ -121,11 +230,16 @@ export interface Operand {
   is16Bit?: boolean;
   is8Bit?: boolean;
   is8BitHigh?: boolean;
+  segReg?: SegmentRegisterName;
   imm?: number;
   memBaseReg?: RegisterId;
+  memIndexReg?: RegisterId;
+  memScale?: 1 | 2 | 4 | 8;
   memOffset?: number;
   isDirect?: boolean;
   isByte?: boolean;
+  isWord?: boolean;
+  segmentOverride?: SegmentRegisterName;
   label?: string;
   stringPayload?: string;
   rawString: string;
@@ -141,10 +255,14 @@ export interface ConsoleOutputEntry {
 
 export interface DecodedInstruction {
   raw: number;
+  bytes?: number[];
+  byteLength?: number;
+  repPrefix?: 'REP' | 'REPE' | 'REPNE';
   mnemonic: Mnemonic;
   opcode: number;
   dest: Operand;
   src: Operand;
+  imm2?: number;
   assemblyString: string;
 }
 
@@ -196,6 +314,8 @@ export interface CPUMicroState {
   eip: number;
   oldEip?: number;
   ir: number;
+  irBytes?: number[];
+  instLength?: number;
   mar: number;
   mdr: number;
   aluOut: number;
@@ -205,6 +325,7 @@ export interface CPUMicroState {
   latchBSource?: string;
   latchBIsImmediate?: boolean;
   registers: Uint32Array; // 8 registers: EAX(0) to ESP(7)
+  segments?: SegmentRegisters;
   flags: EFLAGS;
   phase: CPUPhase;
   stepPhase?: CPUPhase;
@@ -226,6 +347,7 @@ export interface CPUMicroState {
 export interface AssembledProgram {
   codeBytes: Uint8Array;
   dataBytes?: Uint8Array;
+  entryPoint?: number;
   sourceLines: string[];
   lineAddresses: Map<number, number>; // source line (0-indexed) -> byte address
   addressToLine: Map<number, number>; // byte address -> source line (0-indexed)

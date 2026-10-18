@@ -384,4 +384,170 @@ PRINT 1               ; Bit was set!
 HLT
 `,
   },
+  {
+    id: 'masm_proc_invoke',
+    name: '14. MASM Style: PROC, LOCAL & INVOKE (.MODEL FLAT)',
+    description: 'Authentic 32-bit MASM syntax: uses .MODEL FLAT, STDCALL, PROC with typed parameters, LOCAL stack variables, and INVOKE.',
+    code: `; PulseCISC-32: Authentic MASM Procedure & INVOKE Demo
+.386
+.MODEL FLAT, STDCALL
+OPTION CASEMAP:NONE
+
+.DATA
+  baseScore DWORD 25
+  bonus     DWORD 15
+
+.CODE
+; Procedure with STDCALL parameters and LOCAL stack variable
+ComputeTotal PROC USES ebx, a:DWORD, b:DWORD, mult:DWORD
+  LOCAL partialSum:DWORD
+
+  MOV EAX, a            ; Resolves to [EBP + 8]
+  ADD EAX, b            ; Resolves to [EBP + 12]
+  MOV partialSum, EAX   ; Resolves to [EBP - 4]
+
+  MOV EBX, mult         ; Resolves to [EBP + 16]
+  MOV EAX, partialSum
+  IMUL EAX, EBX         ; (25 + 15) * 3 = 120
+  RET                   ; Auto-restores EBX, LEAVE, and RET 12
+ComputeTotal ENDP
+
+main PROC
+  INVOKE ComputeTotal, baseScore, bonus, 3
+  PRINT EAX             ; Outputs 120 (0x00000078)
+  INVOKE ExitProcess, 0
+main ENDP
+END main
+`,
+  },
+  {
+    id: 'masm_struct_sib',
+    name: '15. MASM Style: STRUCT & Complex SIB Addressing',
+    description: 'Demonstrates STRUCT ... ENDS field offsets, DUP array initialization, and Scale-Index-Base [EBX + ESI*4] addressing.',
+    code: `; PulseCISC-32: MASM STRUCT & Scale-Index-Base (SIB) Addressing
+.386
+.MODEL FLAT, STDCALL
+
+; Define a custom structure (12 bytes total)
+ItemRecord STRUCT
+  id    DWORD 0
+  price DWORD 0
+  qty   DWORD 0
+ItemRecord ENDS
+
+.DATA
+  myItem ItemRecord <101, 45, 4>
+  scores DWORD 10, 20, 30, 40
+
+.CODE
+main PROC
+  ; 1. Access STRUCT fields via base register + Struct.field offset
+  MOV EBX, OFFSET myItem
+  MOV EAX, [EBX + ItemRecord.price]   ; [EBX + 4] = 45
+  IMUL EAX, [EBX + ItemRecord.qty]    ; 45 * 4 = 180
+  PRINT EAX                           ; Prints 180
+
+  ; 2. Full Scale-Index-Base (SIB) array sum: [EBX + ESI*4]
+  MOV EBX, OFFSET scores
+  XOR ESI, ESI                        ; Index ESI = 0
+  XOR EAX, EAX                        ; Sum EAX = 0
+  MOV ECX, LENGTHOF scores            ; ECX = 4 elements
+
+sib_loop:
+  ADD EAX, [EBX + ESI*4]              ; SIB Addressing: Base + Index * 4
+  INC ESI
+  LOOP sib_loop
+
+  PRINT EAX                           ; Prints 100 (10+20+30+40)
+  HLT
+main ENDP
+END main
+`,
+  },
+  {
+    id: 'masm_structured_control',
+    name: '16. MASM Style: Structured Control (.IF, .ELSE, .WHILE)',
+    description: 'Uses high-level MASM structured directives (.WHILE, .IF, .ELSE, .ENDIF) that automatically compile into CMP and conditional jumps.',
+    code: `; PulseCISC-32: MASM Structured Control Directives (.IF / .WHILE)
+.386
+.MODEL FLAT, STDCALL
+
+MAX_LIMIT = 6
+
+.DATA
+  totalEven DWORD 0
+  totalOdd  DWORD 0
+
+.CODE
+main PROC
+  MOV ECX, 1
+
+  .WHILE ECX <= MAX_LIMIT
+    MOV EAX, ECX
+    AND EAX, 1
+
+    .IF EAX == 0
+      ADD totalEven, ECX    ; 2 + 4 + 6 = 12
+    .ELSE
+      ADD totalOdd, ECX     ; 1 + 3 + 5 = 9
+    .ENDIF
+
+    INC ECX
+  .ENDW
+
+  MOV EAX, totalEven
+  PRINT EAX                 ; Prints 12
+  MOV EBX, totalOdd
+  PRINT EBX                 ; Prints 9
+  HLT
+main ENDP
+END main
+`,
+  },
+  {
+    id: 'x86_string_ops',
+    name: '17. x86 Primitives: REP MOVSD, STOSD, CMOV & BSWAP',
+    description: 'Hardware block memory operations (CLD, REP STOSD, REP MOVSD), conditional move (CMOVG), and endianness swap (BSWAP).',
+    code: `; PulseCISC-32: Hardware String Primitives, CMOVcc & BSWAP
+.386
+.MODEL FLAT, STDCALL
+
+.DATA
+  srcBuf DWORD 4 DUP(0)
+  dstBuf DWORD 4 DUP(0)
+
+.CODE
+main PROC
+  CLD                       ; Clear Direction Flag (DF = 0: forward)
+
+  ; 1. Fill srcBuf with 0x11223344 using REP STOSD
+  MOV EDI, OFFSET srcBuf
+  MOV EAX, 0x11223344
+  MOV ECX, 4
+  REP STOSD
+
+  ; 2. Copy srcBuf -> dstBuf using REP MOVSD
+  MOV ESI, OFFSET srcBuf
+  MOV EDI, OFFSET dstBuf
+  MOV ECX, 4
+  REP MOVSD
+
+  ; 3. Load copied dword and byte-swap endianness with BSWAP
+  MOV EBX, OFFSET dstBuf
+  MOV EAX, [EBX + 8]        ; EAX = 0x11223344
+  BSWAP EAX                 ; EAX = 0x44332211
+  PRINT EAX
+
+  ; 4. Branchless maximum using CMOVG
+  MOV EAX, 42
+  MOV EDX, 99
+  CMP EDX, EAX
+  CMOVG EAX, EDX            ; EAX becomes 99 without a branch!
+  PRINT EAX
+  HLT
+main ENDP
+END main
+`,
+  },
 ];
+

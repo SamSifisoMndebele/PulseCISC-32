@@ -1,9 +1,10 @@
-// PulseCISC-32 Disassembler
-import { decodeInstruction, toHex32 } from './isa';
+// PulseCISC-32 Variable-Length x86 Disassembler
+import { decodeInstruction, decodeInstructionFromBytes, formatBytesHex, toHex32 } from './isa';
 import type { DecodedInstruction } from './types';
 
 export interface DisassembledLine {
   address: number;
+  byteLength: number;
   hex: string;
   decoded: DecodedInstruction;
   assembly: string;
@@ -14,7 +15,8 @@ export class Disassembler {
     const decoded = decodeInstruction(rawWord);
     return {
       address: eip,
-      hex: toHex32(rawWord),
+      byteLength: decoded.byteLength ?? 4,
+      hex: decoded.bytes ? formatBytesHex(decoded.bytes) : toHex32(rawWord),
       decoded,
       assembly: decoded.assemblyString,
     };
@@ -22,16 +24,23 @@ export class Disassembler {
 
   public static disassembleBuffer(bytes: Uint8Array, startAddress: number = 0): DisassembledLine[] {
     const lines: DisassembledLine[] = [];
-    const count = Math.floor(bytes.length / 4);
+    let offset = 0;
 
-    for (let i = 0; i < count; i++) {
-      const addr = startAddress + i * 4;
-      const b0 = bytes[i * 4];
-      const b1 = bytes[i * 4 + 1];
-      const b2 = bytes[i * 4 + 2];
-      const b3 = bytes[i * 4 + 3];
-      const rawWord = ((b3 << 24) | (b2 << 16) | (b1 << 8) | b0) >>> 0;
-      lines.push(this.disassembleWord(rawWord, addr));
+    while (offset < bytes.length) {
+      const addr = startAddress + offset;
+      const decoded = decodeInstructionFromBytes(bytes, offset);
+      const len = Math.max(1, decoded.byteLength ?? 1);
+      const rawBytes = decoded.bytes ?? Array.from(bytes.subarray(offset, offset + len));
+
+      lines.push({
+        address: addr,
+        byteLength: len,
+        hex: formatBytesHex(rawBytes),
+        decoded,
+        assembly: decoded.assemblyString,
+      });
+
+      offset += len;
     }
 
     return lines;

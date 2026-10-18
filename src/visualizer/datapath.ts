@@ -226,7 +226,9 @@ export class DatapathRenderer {
           Boolean(
             state.decoded &&
               (state.decoded.opcode === OPCODES.MOV_MR ||
-                state.decoded.opcode === OPCODES.MOVB_MR)
+                state.decoded.opcode === OPCODES.MOVB_MR ||
+                state.decoded.opcode === OPCODES.MOVW_MR ||
+                state.decoded.opcode === OPCODES.MOV_MI)
           );
         if (isStore) {
           if (P >= 0.35 && P <= 0.6) pulseMDR = Math.sin(((P - 0.35) / 0.25) * Math.PI);
@@ -638,7 +640,9 @@ export class DatapathRenderer {
         Boolean(
           state.decoded &&
             (state.decoded.opcode === OPCODES.MOV_MR ||
-              state.decoded.opcode === OPCODES.MOVB_MR)
+              state.decoded.opcode === OPCODES.MOVB_MR ||
+              state.decoded.opcode === OPCODES.MOVW_MR ||
+              state.decoded.opcode === OPCODES.MOV_MI)
         ));
     const isLatchToMDRActive = isStoreInst;
     drawLine(

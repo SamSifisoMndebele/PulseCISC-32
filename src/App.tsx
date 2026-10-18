@@ -84,7 +84,7 @@ export function App() {
     cpuState.phase === 'HALTED' && cpuState.cycles === 0
       ? cpuState.eip
       : (cpuState.oldEip ?? cpuState.eip);
-  const activeLineIndex = assembled.addressToLine.get(currentInstAddr & ~0x3) ?? null;
+  const activeLineIndex = assembled.addressToLine.get(currentInstAddr) ?? null;
 
   // Assemble and load program into Code Segment & Data Segment
   const handleAssemble = useCallback(() => {
@@ -98,7 +98,7 @@ export function App() {
     setAssembled(result);
 
     if (result.errors.length === 0) {
-      cpu.reset();
+      cpu.reset(result.entryPoint);
       cpu.memory.loadCode(result.codeBytes);
       if (result.dataBytes && result.dataBytes.length > 0) {
         cpu.memory.loadData(result.dataBytes);
@@ -123,7 +123,7 @@ export function App() {
     });
     setAssembled(result);
 
-    cpu.reset();
+    cpu.reset(result.entryPoint);
     cpu.memory.loadCode(result.codeBytes);
     if (result.dataBytes && result.dataBytes.length > 0) {
       cpu.memory.loadData(result.dataBytes);
@@ -148,7 +148,7 @@ export function App() {
   // Reset CPU
   const handleReset = useCallback(() => {
     setIsRunning(false);
-    cpu.reset();
+    cpu.reset(assembled.entryPoint);
     cpu.memory.loadCode(assembled.codeBytes);
     if (assembled.dataBytes && assembled.dataBytes.length > 0) {
       cpu.memory.loadData(assembled.dataBytes);
@@ -183,7 +183,7 @@ export function App() {
     });
     setAssembled(result);
 
-    cpu.reset();
+    cpu.reset(result.entryPoint);
     if (result.errors.length === 0) {
       cpu.memory.loadCode(result.codeBytes);
       if (result.dataBytes && result.dataBytes.length > 0) {
@@ -411,10 +411,12 @@ export function App() {
                 <SpecialRegistersView
                   eip={cpuState.eip}
                   ir={cpuState.ir}
+                  irBytes={cpuState.irBytes}
                   mar={cpuState.mar}
                   mdr={cpuState.mdr}
                   aluOut={cpuState.aluOut}
                   flags={cpuState.flags}
+                  segments={cpuState.segments}
                   decodedString={cpuState.decoded?.assemblyString}
                   latchA={cpuState.latchA}
                   latchB={cpuState.latchB}

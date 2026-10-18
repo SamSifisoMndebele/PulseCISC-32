@@ -1,6 +1,6 @@
-// PulseCISC-32 x86 Architecture & ISA Cheatsheet Modal
+// PulseCISC-32 x86 & MASM Architecture Reference Manual Modal
 import React from 'react';
-import { X, BookOpen, Layers, Cpu, Database } from 'lucide-react';
+import { X, BookOpen, Layers, Cpu, Database, Code } from 'lucide-react';
 
 interface CheatsheetModalProps {
   isOpen: boolean;
@@ -12,13 +12,13 @@ export const CheatsheetModal: React.FC<CheatsheetModalProps> = ({ isOpen, onClos
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm select-none">
-      <div className="flex flex-col w-full max-w-2xl max-h-[85vh] bg-[#0d121f] border border-slate-700/80 rounded-2xl shadow-2xl text-slate-100 overflow-hidden">
+      <div className="flex flex-col w-full max-w-3xl max-h-[85vh] bg-[#0d121f] border border-slate-700/80 rounded-2xl shadow-2xl text-slate-100 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <BookOpen className="w-5 h-5 text-sky-400" />
             <h2 className="text-base font-bold font-mono tracking-tight text-white">
-              PulseCISC-32 x86 Reference Manual
+              PulseCISC-32 MASM & x86 Reference Manual
             </h2>
           </div>
           <button
@@ -31,115 +31,135 @@ export const CheatsheetModal: React.FC<CheatsheetModalProps> = ({ isOpen, onClos
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs font-mono">
-          {/* Section 1: Registers */}
+          {/* Section 1: MASM Directives & Structured Syntax */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-amber-400 font-bold uppercase text-[11px] tracking-wider">
+              <Code className="w-4 h-4" />
+              <span>MASM High-Level Directives & Structured Syntax</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+              <div>
+                <span className="text-amber-300 font-bold">.MODEL FLAT, STDCALL</span>
+                <p className="text-[10px] text-slate-400">Enables 32-bit flat memory and STDCALL stack cleanup (`RET n`). Supports `.386`, `.DATA`, `.CODE`, `END main`.</p>
+              </div>
+              <div>
+                <span className="text-amber-300 font-bold">PROC / LOCAL / ENDP</span>
+                <p className="text-[10px] text-slate-400">
+                  <code className="text-slate-200">MyFn PROC USES ebx, a:DWORD</code> + <code className="text-slate-200">LOCAL x:DWORD</code> auto-builds EBP frames.
+                </p>
+              </div>
+              <div>
+                <span className="text-amber-300 font-bold">INVOKE proc, arg1, ADDR v</span>
+                <p className="text-[10px] text-slate-400">Pushes arguments right-to-left, resolves `ADDR` via `LEA`/`OFFSET`, and calls `proc`.</p>
+              </div>
+              <div>
+                <span className="text-amber-300 font-bold">STRUCT ... ENDS</span>
+                <p className="text-[10px] text-slate-400">Defines custom structs and resolves field offsets like <code className="text-slate-200">[EBX + Item.price]</code>.</p>
+              </div>
+              <div>
+                <span className="text-amber-300 font-bold">.IF / .ELSEIF / .ELSE / .ENDIF</span>
+                <p className="text-[10px] text-slate-400">Structured comparisons (`==`, `!=`, `&gt;`, `&gt;=`, `&lt;`, `&lt;=`, `ZERO?`, `CARRY?`).</p>
+              </div>
+              <div>
+                <span className="text-amber-300 font-bold">.WHILE / .ENDW & .REPEAT / .UNTIL</span>
+                <p className="text-[10px] text-slate-400">High-level loops with `.BREAK` and `.CONTINUE` plus `DUP`, `SIZEOF`, `LENGTHOF`, `TYPE`.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Registers & Complex SIB Addressing */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sky-400 font-bold uppercase text-[11px] tracking-wider">
               <Cpu className="w-4 h-4" />
-              <span>Registers (Classic x86 IA-32)</span>
+              <span>Registers (32/16/8-bit, Segments) & Complex SIB Addressing</span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-              <div><span className="text-sky-300 font-bold">EAX (AX)</span>: Accumulator (returns, math)</div>
-              <div><span className="text-sky-300 font-bold">EBX (BX)</span>: Base pointer (data array)</div>
-              <div><span className="text-sky-300 font-bold">ECX (CX)</span>: Counter (loops, shifts)</div>
-              <div><span className="text-sky-300 font-bold">EDX (DX)</span>: Data (arithmetic, I/O)</div>
-              <div><span className="text-sky-300 font-bold">ESI (SI)</span>: Source Index (pointer)</div>
-              <div><span className="text-sky-300 font-bold">EDI (DI)</span>: Destination Index (pointer)</div>
-              <div><span className="text-sky-300 font-bold">EBP (BP)</span>: Base Pointer (stack frame)</div>
-              <div><span className="text-sky-300 font-bold">ESP (SP)</span>: Stack Pointer (defaults 0xFFFC in 64 KB)</div>
+              <div><span className="text-sky-300 font-bold">EAX / AX / AH / AL</span>: Accumulator</div>
+              <div><span className="text-sky-300 font-bold">EBX / BX / BH / BL</span>: Base Register</div>
+              <div><span className="text-sky-300 font-bold">ECX / CX / CH / CL</span>: Loop & Shift Counter</div>
+              <div><span className="text-sky-300 font-bold">EDX / DX / DH / DL</span>: Data & Multiply/Divide High</div>
+              <div><span className="text-sky-300 font-bold">ESI / SI & EDI / DI</span>: Source & Destination Index</div>
+              <div><span className="text-sky-300 font-bold">EBP / BP & ESP / SP</span>: Frame Base & Stack Pointer</div>
+              <div className="col-span-2 pt-1 border-t border-slate-800/80 text-slate-300">
+                <span className="text-indigo-300 font-bold">SIB Addressing</span>: <code className="text-emerald-300">[Base + Index*Scale + Disp]</code> where Scale ∈ &#123;1, 2, 4, 8&#125; (e.g. <code className="text-slate-200">[EBX + ESI*4 + 16]</code>, <code className="text-slate-200">arr[ECX*4]</code>, <code className="text-slate-200">BYTE PTR [EDI]</code>, <code className="text-slate-200">WORD PTR [EBP - 4]</code>).
+              </div>
             </div>
-            <p className="text-[10px] text-slate-400">
-              * Writing to 16-bit sub-registers (e.g. <code className="text-sky-300">MOV AX, 0x1234</code>) modifies bits [15:0] while preserving upper bits [31:16].
-            </p>
           </div>
 
-          {/* Section 2: Instructions */}
+          {/* Section 3: Variable-Length x86 Instruction Set */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-emerald-400 font-bold uppercase text-[11px] tracking-wider">
               <Layers className="w-4 h-4" />
-              <span>Full CISC / x86 Architecture Instruction Set</span>
+              <span>Variable-Length x86 Instruction Set (1 to 11 Bytes)</span>
             </div>
             <div className="space-y-2 bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-[11px]">
               {/* Stack & Subroutines */}
               <div className="border-b border-slate-800/80 pb-2 mb-2">
-                <span className="text-amber-400 font-bold block mb-1">Stack, Calling Conventions & Functions</span>
+                <span className="text-amber-400 font-bold block mb-1">Stack, Frames & Subroutines</span>
                 <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
-                  <div><span className="text-emerald-300 font-bold">PUSH src</span>: Decrement ESP (-4), store in [ESP] (<code className="text-slate-200">PUSH EAX</code>, <code className="text-slate-200">PUSH 42</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">POP dest</span>: Read from [ESP], increment ESP (+4) (<code className="text-slate-200">POP EBX</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">CALL label</span>: Push return EIP to stack and jump to function (<code className="text-slate-200">CALL factorial</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">RET</span>: Pop return address from stack into EIP (<code className="text-slate-200">RET</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">PUSH / POP</span>: 1-byte reg (`50+r`/`58+r`), imm, or `[mem]`</div>
+                  <div><span className="text-emerald-300 font-bold">PUSHAD / POPAD</span>: Push/Pop all 8 general registers (`60`/`61`)</div>
+                  <div><span className="text-emerald-300 font-bold">PUSHFD / POPFD</span>: Push/Pop 32-bit EFLAGS (`9C`/`9D`)</div>
+                  <div><span className="text-emerald-300 font-bold">ENTER / LEAVE</span>: Setup / teardown stack frame (`C8`/`C9`)</div>
+                  <div><span className="text-emerald-300 font-bold">CALL / RET [n]</span>: Call subroutine (`E8`) / Return & clean stack (`C3`/`C2`)</div>
                 </div>
               </div>
 
-              {/* Data Transfer & Pointers */}
+              {/* Data Transfer & Extension */}
               <div className="border-b border-slate-800/80 pb-2 mb-2">
-                <span className="text-sky-400 font-bold block mb-1">Data Transfer, Pointers & Byte Access</span>
+                <span className="text-sky-400 font-bold block mb-1">Data Movement, Zero/Sign Extension & Conditional Move</span>
                 <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
-                  <div><span className="text-emerald-300 font-bold">MOV</span>: Transfer 32/16-bit (<code className="text-slate-200">MOV EAX, 10</code>, <code className="text-slate-200">MOV [EBX + 4], EAX</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">MOVB</span>: 8-bit Byte load/store (<code className="text-slate-200">MOV AL, BYTE [ESI]</code>, <code className="text-slate-200">MOV BYTE [EDI], AL</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">LEA</span>: Load Effective Address without RAM access (<code className="text-slate-200">LEA EBX, [EBP - 8]</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">XCHG</span>: Atomic register swap (<code className="text-slate-200">XCHG EAX, EBX</code>)</div>
+                  <div><span className="text-emerald-300 font-bold">MOV / MOVB / MOVW</span>: 32/16/8-bit transfers (full 32-bit imm & SIB)</div>
+                  <div><span className="text-emerald-300 font-bold">MOVZX / MOVSX</span>: Move with Zero-Extend or Sign-Extend</div>
+                  <div><span className="text-emerald-300 font-bold">LEA</span>: Load Effective SIB Address (`8D`) without memory read</div>
+                  <div><span className="text-emerald-300 font-bold">CMOVcc / SETcc</span>: Branchless conditional move (`CMOVG`) & byte set (`SETE`)</div>
+                  <div><span className="text-emerald-300 font-bold">XCHG / XADD / CMPXCHG</span>: Swap, Exchange-Add, Compare-Exchange</div>
+                  <div><span className="text-emerald-300 font-bold">CBW / CWDE / CWD / CDQ</span>: Sign-extend AL→AX→EAX→EDX:EAX</div>
                 </div>
               </div>
 
-              {/* Arithmetic */}
+              {/* String & Block Primitives */}
               <div className="border-b border-slate-800/80 pb-2 mb-2">
-                <span className="text-emerald-400 font-bold block mb-1">Arithmetic & Multi-Precision</span>
+                <span className="text-indigo-400 font-bold block mb-1">Hardware String & Block Memory Primitives</span>
                 <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
-                  <div><span className="text-emerald-300 font-bold">ADD / SUB</span>: Add / Subtract with flags (<code className="text-slate-200">ADD EAX, 5</code>, <code className="text-slate-200">SUB ECX, EBX</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">ADC / SBB</span>: Add/Sub with Carry/Borrow (<code className="text-slate-200">ADC EDX, 0</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">INC / DEC</span>: Increment / Decrement by 1 (preserves CF) (<code className="text-slate-200">INC ECX</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">NEG</span>: Two's complement negate (<code className="text-slate-200">NEG EAX</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">MUL / IMUL</span>: Unsigned/Signed multiply (<code className="text-slate-200">MUL EBX</code>, <code className="text-slate-200">IMUL EAX, 10</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">DIV / IDIV</span>: Unsigned/Signed divide (<code className="text-slate-200">DIV EBX</code>: EAX=quot, EDX=rem)</div>
+                  <div><span className="text-emerald-300 font-bold">MOVSB / MOVSW / MOVSD</span>: Copy `[ESI]` → `[EDI]`</div>
+                  <div><span className="text-emerald-300 font-bold">STOSB / STOSW / STOSD</span>: Store `AL/AX/EAX` → `[EDI]`</div>
+                  <div><span className="text-emerald-300 font-bold">LODSB / LODSW / LODSD</span>: Load `[ESI]` → `AL/AX/EAX`</div>
+                  <div><span className="text-emerald-300 font-bold">CMPSB / SCASB</span>: Compare `[ESI],[EDI]` / Scan `[EDI]` for `AL`</div>
+                  <div><span className="text-emerald-300 font-bold">REP / REPE / REPNE</span>: Hardware `ECX` repeat prefix (`F3`/`F2`)</div>
+                  <div><span className="text-emerald-300 font-bold">CLD / STD</span>: Clear (`DF=0`) or Set (`DF=1`) Direction Flag</div>
                 </div>
               </div>
 
-              {/* Bitwise, Shifts & Tests */}
-              <div className="border-b border-slate-800/80 pb-2 mb-2">
-                <span className="text-purple-400 font-bold block mb-1">Logic, Shifts & Bit Twiddling</span>
-                <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
-                  <div><span className="text-emerald-300 font-bold">AND / OR / XOR</span>: Bitwise logic (<code className="text-slate-200">XOR EAX, EAX</code>, <code className="text-slate-200">AND EAX, 0xFF</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">NOT</span>: One's complement bit inversion (<code className="text-slate-200">NOT EAX</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">TEST</span>: Non-destructive AND, sets ZF & SF (<code className="text-slate-200">TEST EAX, EAX</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">CMP</span>: Non-destructive SUB, updates EFLAGS (<code className="text-slate-200">CMP EAX, 100</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">SHL / SAL</span>: Shift Left by imm or CL (<code className="text-slate-200">SHL EAX, 2</code> multiplies by 4)</div>
-                  <div><span className="text-emerald-300 font-bold">SHR / SAR</span>: Logical / Arithmetic Shift Right (<code className="text-slate-200">SAR EAX, 1</code> divides signed by 2)</div>
-                  <div><span className="text-emerald-300 font-bold">ROL / ROR</span>: Rotate bits left / right (<code className="text-slate-200">ROL EAX, 4</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">CLC / STC / CMC</span>: Clear / Set / Complement Carry Flag (CF)</div>
-                </div>
-              </div>
-
-              {/* Control Flow */}
+              {/* Arithmetic, Bitwise & Loops */}
               <div>
-                <span className="text-rose-400 font-bold block mb-1">Control Flow & Conditionals</span>
+                <span className="text-emerald-400 font-bold block mb-1">Arithmetic, Bit Manipulation & Control Flow</span>
                 <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
-                  <div><span className="text-emerald-300 font-bold">JMP</span>: Unconditional jump (<code className="text-slate-200">JMP main</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">LOOP</span>: Decrement ECX, branch if ECX != 0 (<code className="text-slate-200">LOOP loop_start</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">JE / JZ</span>: Jump if Equal / Zero (ZF=1)</div>
-                  <div><span className="text-emerald-300 font-bold">JNE / JNZ</span>: Jump if Not Equal / Non-Zero (ZF=0)</div>
-                  <div><span className="text-emerald-300 font-bold">JL / JLE / JG / JGE</span>: Signed comparisons (<code className="text-slate-200">JL target</code>, <code className="text-slate-200">JG target</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">JB / JBE / JA / JAE</span>: Unsigned comparisons using Carry (<code className="text-slate-200">JB target</code>, <code className="text-slate-200">JA target</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">JS / JNS / JO / JNO</span>: Flag checks: Sign negative, Overflow (<code className="text-slate-200">JS negative</code>)</div>
-                  <div><span className="text-emerald-300 font-bold">NOP / HLT</span>: No-operation / Halt processor clock</div>
+                  <div><span className="text-emerald-300 font-bold">ADD / ADC / SUB / SBB</span>: Reg, Imm32, or `[mem]` operands</div>
+                  <div><span className="text-emerald-300 font-bold">MUL / IMUL / DIV / IDIV</span>: 1-, 2-, and 3-operand forms</div>
+                  <div><span className="text-emerald-300 font-bold">BT / BTS / BTR / BTC</span>: Bit Test & Set/Reset/Complement in `CF`</div>
+                  <div><span className="text-emerald-300 font-bold">BSF / BSR / BSWAP</span>: Bit Scan Forward/Reverse & Byte Swap</div>
+                  <div><span className="text-emerald-300 font-bold">JMP / Jcc / JECXZ</span>: All signed/unsigned jumps + jump if `ECX=0`</div>
+                  <div><span className="text-emerald-300 font-bold">LOOP / LOOPE / LOOPNE</span>: Decrement `ECX` and loop</div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Section 3: Memory Segmentation */}
+          {/* Section 4: Memory Segmentation */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-purple-400 font-bold uppercase text-[11px] tracking-wider">
               <Database className="w-4 h-4" />
-              <span>64 KB Memory Segmentation (8 KB Code / 56 KB Data RAM)</span>
+              <span>32-Bit Flat Memory Model & Segment Selectors</span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-[11px] bg-slate-950/60 p-3 rounded-xl border border-slate-800">
               <div>
-                <span className="text-purple-300 font-bold">Code Segment</span>: 0x0000 - 0x1FFF (8 KB standard)
-                <p className="text-[10px] text-slate-400 mt-1">Holds up to 2,048 assembled 32-bit instructions pointed to by EIP (configurable via Settings).</p>
+                <span className="text-purple-300 font-bold">CS (0x1B) — Code Segment</span>: 0x0000 - 0x1FFF
+                <p className="text-[10px] text-slate-400 mt-1">Holds variable-length x86 machine code bytes pointed to by EIP.</p>
               </div>
               <div>
-                <span className="text-purple-300 font-bold">Data Segment</span>: 0x2000 - 0xFFFF (56 KB RAM)
-                <p className="text-[10px] text-slate-400 mt-1">Word-aligned RAM read/write via MOV [mem], reg. Stack top defaults to 0xFFFC.</p>
+                <span className="text-purple-300 font-bold">DS / SS / ES (0x23) — Data & Stack</span>: 0x2000 - 0xFFFF
+                <p className="text-[10px] text-slate-400 mt-1">Flat byte-addressable Data & Stack RAM. ESP initializes to top of RAM (0xFFFC).</p>
               </div>
             </div>
           </div>

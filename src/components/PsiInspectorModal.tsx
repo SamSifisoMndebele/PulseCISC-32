@@ -41,21 +41,21 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-      <div className="w-full max-w-4xl max-h-[88vh] flex flex-col rounded-2xl bg-[#0b101b] border border-slate-700/80 shadow-2xl overflow-hidden text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-2 sm:p-4">
+      <div className="w-full max-w-4xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col rounded-2xl bg-[#0b101b] border border-slate-700/80 shadow-2xl overflow-hidden text-slate-100">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 bg-slate-900/90 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-orange-500/15 border border-orange-500/40 text-orange-400">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-900/90 border-b border-slate-800">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-lg bg-orange-500/15 border border-orange-500/40 text-orange-400 shrink-0">
               <Sparkles className="w-4 h-4" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-sm font-bold tracking-wide text-white font-mono">
-                  Rust Core &amp; IntelliJ-Style PSI Inspector
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xs sm:text-sm font-bold tracking-wide text-white font-mono truncate">
+                  Rust Core &amp; PSI Inspector
                 </h2>
                 <span
-                  className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border ${
+                  className={`text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border ${
                     engineInfo?.isNativeTauri
                       ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
                       : 'bg-sky-950/80 text-sky-300 border-sky-700/60'
@@ -64,7 +64,7 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
                   {engineInfo?.isNativeTauri ? 'NATIVE RUST TAURI v2' : 'HYBRID ENGINE READY'}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400 truncate">
                 Program Structure Interface (PSI) AST Symbol Indexer • Static Hazard Analyzer • Native 32-Bit ALU Stress Runner
               </p>
             </div>
@@ -72,14 +72,14 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-4 sm:space-y-5">
           {/* Top Stats Strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
@@ -161,7 +161,7 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
             </div>
 
             {lastBenchmark && (
-              <div className="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-3 gap-3 text-xs font-mono">
+              <div className="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 text-xs font-mono">
                 <div>
                   <span className="text-slate-400">Instructions Executed: </span>
                   <span className="text-white font-bold">

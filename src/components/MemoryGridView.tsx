@@ -253,9 +253,10 @@ export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2">
                   <span
-                    className={`font-mono select-all ${
+                    onClick={() => isPaused && handleStartEdit(addr)}
+                    className={`font-mono select-all ${isPaused ? 'cursor-pointer' : ''} ${
                       isModified
                         ? 'text-purple-200 font-bold'
                         : wordVal !== 0
@@ -278,9 +279,9 @@ export const MemoryGridView: React.FC<MemoryGridViewProps> = ({
                     <button
                       onClick={() => handleStartEdit(addr)}
                       title="Edit Word in Memory"
-                      className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-sky-400 transition-opacity"
+                      className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 sm:p-0.5 text-slate-400 hover:text-sky-400 active:text-sky-300 transition-opacity"
                     >
-                      <Edit2 className="w-3 h-3" />
+                      <Edit2 className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
                     </button>
                   )}
                 </div>

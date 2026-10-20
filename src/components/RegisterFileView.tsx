@@ -144,9 +144,12 @@ export const RegisterFileView: React.FC<RegisterFileViewProps> = ({
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                   <span
-                    className={`text-xs font-mono select-all ${
+                    onClick={() => isPaused && handleStartEdit(regId)}
+                    className={`font-mono select-all truncate ${
+                      format === 'bin' ? 'text-[10px] sm:text-xs tracking-tighter' : 'text-xs'
+                    } ${isPaused ? 'cursor-pointer' : ''} ${
                       isModified ? 'text-amber-200 font-bold' : 'text-slate-200'
                     }`}
                   >
@@ -156,9 +159,9 @@ export const RegisterFileView: React.FC<RegisterFileViewProps> = ({
                     <button
                       onClick={() => handleStartEdit(regId)}
                       title="Edit Register Value"
-                      className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-sky-400 transition-opacity"
+                      className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 p-1 text-slate-400 hover:text-sky-400 active:text-sky-300 transition-opacity shrink-0"
                     >
-                      <Edit2 className="w-3 h-3" />
+                      <Edit2 className="w-3.5 h-3.5 sm:w-3 sm:h-3" />
                     </button>
                   )}
                 </div>

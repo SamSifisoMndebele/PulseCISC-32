@@ -145,64 +145,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const dataPercent = 100 - codePercent;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm select-none">
-      <div className="flex flex-col w-full max-w-2xl max-h-[90vh] bg-[#0c101d] border border-slate-700/80 rounded-2xl shadow-2xl text-slate-100 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-sm select-none">
+      <div className="flex flex-col w-full max-w-2xl max-h-[92dvh] sm:max-h-[90vh] bg-[#0c101d] border border-slate-700/80 rounded-2xl shadow-2xl text-slate-100 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 bg-slate-900 border-b border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-900 border-b border-slate-800">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-1.5 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-400 shrink-0">
               <Sliders className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-sm font-bold font-mono tracking-tight text-white">
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold font-mono tracking-tight text-white truncate">
                 System & Architecture Settings
               </h2>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-[11px] text-slate-400 truncate">
                 Configure RAM capacity, memory segmentation, execution engine & visualizer
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 bg-slate-950/70 px-4 text-xs font-mono">
+        <div className="flex border-b border-slate-800 bg-slate-950/70 px-2 sm:px-4 text-xs font-mono overflow-x-auto no-scrollbar whitespace-nowrap shrink-0">
           <button
             onClick={() => setActiveTab('memory')}
-            className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 sm:gap-2 py-2.5 px-2.5 sm:px-3 border-b-2 font-medium transition-colors shrink-0 ${
               activeTab === 'memory'
                 ? 'border-sky-500 text-sky-400 bg-slate-900/40'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Database className="w-4 h-4" />
-            <span>Memory Architecture</span>
+            <Database className="w-4 h-4 shrink-0" />
+            <span>Memory</span>
           </button>
           <button
             onClick={() => setActiveTab('simulation')}
-            className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 sm:gap-2 py-2.5 px-2.5 sm:px-3 border-b-2 font-medium transition-colors shrink-0 ${
               activeTab === 'simulation'
                 ? 'border-sky-500 text-sky-400 bg-slate-900/40'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Cpu className="w-4 h-4" />
+            <Cpu className="w-4 h-4 shrink-0" />
             <span>Execution & Engine</span>
           </button>
           <button
             onClick={() => setActiveTab('visualizer')}
-            className={`flex items-center gap-2 py-2.5 px-3 border-b-2 font-medium transition-colors ${
+            className={`flex items-center gap-1.5 sm:gap-2 py-2.5 px-2.5 sm:px-3 border-b-2 font-medium transition-colors shrink-0 ${
               activeTab === 'visualizer'
                 ? 'border-sky-500 text-sky-400 bg-slate-900/40'
                 : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Eye className="w-4 h-4" />
+            <Eye className="w-4 h-4 shrink-0" />
             <span>Visualizer & UI</span>
           </button>
         </div>
@@ -550,16 +550,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="flex items-center justify-between px-5 py-3 bg-slate-900 border-t border-slate-800">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3 bg-slate-900 border-t border-slate-800">
           <button
             onClick={handleResetDefaults}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-300 hover:bg-slate-800 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-rose-300 hover:bg-slate-800 transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Restore 64 KB Defaults</span>
+            <span>Restore Defaults</span>
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 ml-auto">
             <button
               onClick={onClose}
               className="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
@@ -568,10 +568,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
             <button
               onClick={handleSave}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-md shadow-sky-600/30 transition-all"
+              className="flex items-center gap-1.5 px-3.5 sm:px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs shadow-md shadow-sky-600/30 transition-all"
             >
               <Check className="w-3.5 h-3.5" />
-              <span>Save & Apply Settings</span>
+              <span>Save & Apply</span>
             </button>
           </div>
         </div>

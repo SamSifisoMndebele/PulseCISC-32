@@ -1,4 +1,4 @@
-// PulseCISC-32 Main Application (Desktop Studio with Rust Core & IntelliJ-Style PSI)
+// PulseCISC-32 Main Application (Responsive Mobile, Tablet & Desktop Studio with Rust Core & PSI)
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { CPU } from './core/cpu';
 import { Memory } from './core/memory';
@@ -42,11 +42,16 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Activity,
+  Terminal,
+  CheckCircle2,
 } from 'lucide-react';
 
 const DEFAULT_LEFT_WIDTH = 340;
 const DEFAULT_RIGHT_WIDTH = 320;
 const DEFAULT_BOTTOM_HEIGHT = 240;
+
+export type MobileWorkspaceTab = 'datapath' | 'code' | 'registers' | 'ram' | 'trace';
 
 export function App() {
   // System Configuration (defaults to 64KB, persisted in localStorage)
@@ -136,6 +141,10 @@ export function App() {
   const [isCheatsheetOpen, setIsCheatsheetOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isPsiInspectorOpen, setIsPsiInspectorOpen] = useState<boolean>(false);
+  const [assembleToast, setAssembleToast] = useState<boolean>(false);
+
+  // Mobile Workspace Tab State (< 1024px)
+  const [mobileTab, setMobileTab] = useState<MobileWorkspaceTab>('datapath');
 
   // Rust Core & IntelliJ-Style PSI State
   const [engineInfo, setEngineInfo] = useState<EngineInfo | null>(null);
@@ -208,7 +217,7 @@ export function App() {
     }
   }, [selectedPresetId, code, cpu]);
 
-  // Resizable & Collapsible Dock State (persisted in localStorage)
+  // Resizable & Collapsible Dock State (persisted in localStorage for Desktop)
   const [isLeftOpen, setIsLeftOpen] = useState<boolean>(() => {
     return localStorage.getItem('pulsecisc_left_open') !== 'false';
   });
@@ -275,6 +284,8 @@ export function App() {
         cpu.memory.loadData(result.dataBytes);
       }
       setCpuState(cpu.getSnapshot());
+      setAssembleToast(true);
+      setTimeout(() => setAssembleToast(false), 2200);
     }
   }, [code, cpu, systemConfig]);
 
@@ -532,7 +543,7 @@ export function App() {
   };
 
   return (
-    <ScreenSizeGuard minWidth={1024} minHeight={576}>
+    <ScreenSizeGuard>
       <div
         ref={appContainerRef}
         className={`flex flex-col h-full w-full overflow-hidden bg-[#070a10] text-slate-100 ${
@@ -573,8 +584,249 @@ export function App() {
           onCycleTheme={handleCycleTheme}
         />
 
-        {/* Main 3-Column Studio Workspace */}
-        <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* =====================================================================
+            MOBILE & TABLET WORKSPACE (< 1024px)
+            Full-height active panel + Native-style Bottom Tab Navigation Bar
+        ===================================================================== */}
+        <div className="flex lg:hidden flex-1 flex-col overflow-hidden min-h-0 relative">
+          {/* Assembled Confirmation Toast on Mobile */}
+          {assembleToast && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-950/95 border border-emerald-500/60 text-emerald-200 text-xs font-mono shadow-xl backdrop-blur-md">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Assembled &amp; Loaded into CPU!</span>
+              {mobileTab !== 'datapath' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAssembleToast(false);
+                    setMobileTab('datapath');
+                  }}
+                  className="ml-1 px-2 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/50 text-emerald-100 font-semibold"
+                >
+                  View Datapath
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* TAB 1: DATAPATH VISUALIZER */}
+          {mobileTab === 'datapath' && (
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-[#0a0d14]">
+              <CanvasView
+                cpuState={cpuState}
+                speedScale={Math.max(0.6, Math.min(3.0, clockSpeed / 2))}
+                enableParticles={systemConfig.enableParticleAnimations}
+                particleSpeed={systemConfig.particleSpeed}
+              />
+            </div>
+          )}
+
+          {/* TAB 2: x86 ASSEMBLY EDITOR & DISASSEMBLY */}
+          {mobileTab === 'code' && (
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-[#090d16]">
+              <div className="flex items-center bg-slate-950 border-b border-slate-800 text-xs select-none shrink-0">
+                <button
+                  onClick={() => setLeftTab('editor')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 font-medium transition-colors ${
+                    leftTab === 'editor'
+                      ? 'bg-slate-900 text-sky-400 border-b-2 border-sky-500'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                  <span>x86 Assembly Source</span>
+                </button>
+                <button
+                  onClick={() => setLeftTab('machineCode')}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 font-medium transition-colors ${
+                    leftTab === 'machineCode'
+                      ? 'bg-slate-900 text-sky-400 border-b-2 border-sky-500'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Binary className="w-3.5 h-3.5" />
+                  <span>Machine Code ({assembled.codeBytes.length}B)</span>
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden min-h-0">
+                {leftTab === 'editor' ? (
+                  <CodeEditor
+                    code={code}
+                    onChange={setCode}
+                    onAssemble={handleAssemble}
+                    activeLineIndex={activeLineIndex}
+                    errors={assembled.errors}
+                    onShowCheatsheet={() => setIsCheatsheetOpen(true)}
+                  />
+                ) : (
+                  <MachineCodeView
+                    codeBytes={assembled.codeBytes}
+                    currentEIP={currentInstAddr}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: REGISTERS, EFLAGS & LATCHES */}
+          {mobileTab === 'registers' && (
+            <div className="flex-1 flex flex-col overflow-y-auto min-h-0 bg-[#0b0f19]">
+              <div className="flex-1 min-h-[280px]">
+                <RegisterFileView
+                  registers={cpuState.registers}
+                  lastModifiedReg={cpuState.lastModifiedReg}
+                  onUpdateRegister={handleUpdateRegister}
+                  isPaused={!isRunning}
+                />
+              </div>
+              <SpecialRegistersView
+                eip={cpuState.eip}
+                ir={cpuState.ir}
+                irBytes={cpuState.irBytes}
+                mar={cpuState.mar}
+                mdr={cpuState.mdr}
+                aluOut={cpuState.aluOut}
+                flags={cpuState.flags}
+                segments={cpuState.segments}
+                decodedString={cpuState.decoded?.assemblyString}
+                latchA={cpuState.latchA}
+                latchB={cpuState.latchB}
+                latchASource={cpuState.latchASource}
+                latchBSource={cpuState.latchBSource}
+                latchBIsImmediate={cpuState.latchBIsImmediate}
+              />
+            </div>
+          )}
+
+          {/* TAB 4: DATA RAM INSPECTOR */}
+          {mobileTab === 'ram' && (
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-[#0b0f19]">
+              <MemoryGridView
+                memory={cpu.memory}
+                activeMar={cpuState.mar}
+                lastModifiedAddr={cpuState.lastModifiedMem}
+                onUpdateWord={handleUpdateWord}
+                isPaused={!isRunning}
+                pageSize={systemConfig.memoryPageSize}
+              />
+            </div>
+          )}
+
+          {/* TAB 5: RTL EXECUTION TRACE & SYSTEM CONSOLE */}
+          {mobileTab === 'trace' && (
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0 bg-[#070a12]">
+              <TraceLogView
+                logs={cpu.traceLog}
+                onClearLogs={handleClearTrace}
+                consoleOutput={cpuState.consoleOutput}
+                onClearConsole={handleClearConsole}
+                isOpen={true}
+                onToggleOpen={() => {}}
+                fullHeight={true}
+              />
+            </div>
+          )}
+
+          {/* Mobile Bottom Navigation Bar */}
+          <nav
+            aria-label="Mobile Workspace Navigation"
+            className="flex items-center justify-around bg-[#0b101b] border-t border-slate-800 px-1 py-1 pb-safe select-none shrink-0 z-30"
+          >
+            <button
+              type="button"
+              onClick={() => setMobileTab('datapath')}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 rounded-xl transition-colors relative ${
+                mobileTab === 'datapath'
+                  ? 'text-sky-400 bg-sky-500/10 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Activity className="w-4 h-4 mb-0.5" />
+              <span className="text-[10px] tracking-tight">Datapath</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMobileTab('code')}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 rounded-xl transition-colors relative ${
+                mobileTab === 'code'
+                  ? 'text-sky-400 bg-sky-500/10 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="relative">
+                <Code2 className="w-4 h-4 mb-0.5" />
+                {assembled.errors.length > 0 && (
+                  <span className="absolute -top-1 -right-2.5 px-1 min-w-[14px] h-[14px] rounded-full bg-rose-500 text-white text-[9px] font-bold flex items-center justify-center">
+                    {assembled.errors.length}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] tracking-tight">Code</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMobileTab('registers')}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 rounded-xl transition-colors relative ${
+                mobileTab === 'registers'
+                  ? 'text-sky-400 bg-sky-500/10 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="relative">
+                <CpuIcon className="w-4 h-4 mb-0.5" />
+                {cpuState.lastModifiedReg !== null && mobileTab !== 'registers' && (
+                  <span className="absolute -top-0.5 -right-1.5 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                )}
+              </div>
+              <span className="text-[10px] tracking-tight">Registers</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMobileTab('ram')}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 rounded-xl transition-colors relative ${
+                mobileTab === 'ram'
+                  ? 'text-sky-400 bg-sky-500/10 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="relative">
+                <Database className="w-4 h-4 mb-0.5" />
+                {cpuState.lastModifiedMem !== null && mobileTab !== 'ram' && (
+                  <span className="absolute -top-0.5 -right-1.5 w-2 h-2 rounded-full bg-purple-400 animate-ping" />
+                )}
+              </div>
+              <span className="text-[10px] tracking-tight">RAM</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMobileTab('trace')}
+              className={`flex-1 flex flex-col items-center justify-center py-1.5 rounded-xl transition-colors relative ${
+                mobileTab === 'trace'
+                  ? 'text-sky-400 bg-sky-500/10 font-semibold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="relative">
+                <Terminal className="w-4 h-4 mb-0.5" />
+                {cpuState.consoleOutput.length > 0 && (
+                  <span className="absolute -top-1 -right-3 px-1 min-w-[14px] h-[14px] rounded-full bg-emerald-600 text-white text-[9px] font-bold flex items-center justify-center">
+                    {cpuState.consoleOutput.length}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] tracking-tight">Trace / IO</span>
+            </button>
+          </nav>
+        </div>
+
+        {/* =====================================================================
+            DESKTOP 3-COLUMN STUDIO WORKSPACE (>= 1024px)
+        ===================================================================== */}
+        <div className="hidden lg:flex flex-1 overflow-hidden min-h-0">
           {/* LEFT DOCK */}
           {isLeftOpen ? (
             <div
@@ -832,7 +1084,7 @@ export function App() {
           )}
         </div>
 
-        {/* BOTTOM RESIZE SASH */}
+        {/* DESKTOP BOTTOM RESIZE SASH */}
         <div
           onPointerDown={(e) => startResize('bottom', e)}
           onPointerMove={(e) => moveResize('bottom', e)}
@@ -843,7 +1095,7 @@ export function App() {
             localStorage.setItem('pulsecisc_bottom_height', String(DEFAULT_BOTTOM_HEIGHT));
           }}
           title="Drag up/down to resize Bottom Drawer • Double-click to reset height"
-          className={`h-1.5 flex-shrink-0 flex items-center justify-center cursor-row-resize select-none transition-colors group z-10 ${
+          className={`hidden lg:flex h-1.5 flex-shrink-0 items-center justify-center cursor-row-resize select-none transition-colors group z-10 ${
             activeResizer === 'bottom'
               ? 'bg-sky-500'
               : 'bg-slate-800/80 hover:bg-sky-500/80'
@@ -852,16 +1104,18 @@ export function App() {
           <div className="w-8 h-0.5 rounded-full bg-slate-600 group-hover:bg-white transition-colors" />
         </div>
 
-        {/* Bottom Collapsible & Resizable Micro-Operation RTL Trace & System Console Drawer */}
-        <TraceLogView
-          logs={cpu.traceLog}
-          onClearLogs={handleClearTrace}
-          consoleOutput={cpuState.consoleOutput}
-          onClearConsole={handleClearConsole}
-          isOpen={isTraceOpen}
-          onToggleOpen={() => setIsTraceOpen((prev) => !prev)}
-          height={bottomHeight}
-        />
+        {/* Desktop Bottom Collapsible & Resizable Micro-Operation RTL Trace & System Console Drawer */}
+        <div className="hidden lg:block flex-shrink-0">
+          <TraceLogView
+            logs={cpu.traceLog}
+            onClearLogs={handleClearTrace}
+            consoleOutput={cpuState.consoleOutput}
+            onClearConsole={handleClearConsole}
+            isOpen={isTraceOpen}
+            onToggleOpen={() => setIsTraceOpen((prev) => !prev)}
+            height={bottomHeight}
+          />
+        </div>
 
         {/* Cheatsheet Reference Modal */}
         <CheatsheetModal

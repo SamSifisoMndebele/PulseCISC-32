@@ -114,11 +114,28 @@ export function App() {
       try {
         const bridge = (
           window as unknown as {
-            AndroidBridge?: { setSystemBarsTheme?: (isDark: boolean) => void };
+            AndroidBridge?: {
+              setSystemBarsTheme?: (isDark: boolean) => void;
+              syncInsets?: () => void;
+              getInsets?: () => string;
+            };
           }
         ).AndroidBridge;
         if (bridge?.setSystemBarsTheme) {
           bridge.setSystemBarsTheme(!isLight);
+        }
+        if (bridge?.syncInsets) {
+          bridge.syncInsets();
+        } else if (bridge?.getInsets) {
+          const raw = bridge.getInsets();
+          if (raw) {
+            const insets = JSON.parse(raw);
+            const s = document.documentElement.style;
+            if (insets.top) s.setProperty('--sat', `${insets.top}px`);
+            if (insets.bottom) s.setProperty('--sab', `${insets.bottom}px`);
+            if (insets.left) s.setProperty('--sal', `${insets.left}px`);
+            if (insets.right) s.setProperty('--sar', `${insets.right}px`);
+          }
         }
       } catch {
         // Ignore if not running in Android native WebView
@@ -267,16 +284,20 @@ export function App() {
     };
   }, [code]);
 
-  // Notify native Android SplashScreen that initial frame has rendered
+  // Notify native Android SplashScreen that initial frame has rendered & request insets
   useEffect(() => {
     const rafId = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         try {
           const bridge = (
             window as unknown as {
-              AndroidBridge?: { markAppReady?: () => void };
+              AndroidBridge?: {
+                markAppReady?: () => void;
+                syncInsets?: () => void;
+              };
             }
           ).AndroidBridge;
+          bridge?.syncInsets?.();
           bridge?.markAppReady?.();
         } catch {
           // Ignore outside Android
@@ -284,6 +305,28 @@ export function App() {
       });
     });
     return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  // Listen to window resize / orientationchange to sync insets
+  useEffect(() => {
+    const handleResize = () => {
+      try {
+        const bridge = (
+          window as unknown as {
+            AndroidBridge?: { syncInsets?: () => void };
+          }
+        ).AndroidBridge;
+        bridge?.syncInsets?.();
+      } catch {
+        // Ignore
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+    };
   }, []);
 
   const handleRunNativeBenchmark = useCallback(
@@ -961,7 +1004,7 @@ export function App() {
           {/* Mobile Bottom Navigation Bar */}
           <nav
             aria-label="Mobile Workspace Navigation"
-            className="flex items-center justify-around bg-[#0b101b] border-t border-slate-800 px-1 py-1 pb-safe select-none shrink-0 z-30"
+            className="flex items-center justify-around bg-[#0b101b] border-t border-slate-800 px-1 pt-1 pb-safe-offset-1 select-none shrink-0 z-30"
           >
             <button
               type="button"

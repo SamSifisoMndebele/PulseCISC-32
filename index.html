@@ -10,6 +10,24 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>PulseCISC-32: 32-Bit Visual CPU & Memory Simulator</title>
+    <script>
+      (function () {
+        try {
+          var bridge = window.AndroidBridge;
+          if (bridge && typeof bridge.getInsets === 'function') {
+            var raw = bridge.getInsets();
+            if (raw) {
+              var insets = JSON.parse(raw);
+              var s = document.documentElement.style;
+              if (insets.top) s.setProperty('--sat', insets.top + 'px');
+              if (insets.bottom) s.setProperty('--sab', insets.bottom + 'px');
+              if (insets.left) s.setProperty('--sal', insets.left + 'px');
+              if (insets.right) s.setProperty('--sar', insets.right + 'px');
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

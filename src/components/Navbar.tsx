@@ -125,7 +125,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     : 'Select Program';
 
   return (
-    <header className="flex flex-col lg:flex-row lg:flex-nowrap lg:items-center lg:justify-between px-3 sm:px-4 py-2 bg-[#0d121d] border-b border-slate-800 text-slate-100 select-none gap-2 lg:gap-3 pt-safe shrink-0">
+    <header className="flex flex-col lg:flex-row lg:flex-nowrap lg:items-center lg:justify-between px-3 sm:px-4 pb-2 pt-safe-offset-2 bg-[#0d121d] border-b border-slate-800 text-slate-100 select-none gap-2 lg:gap-3 shrink-0">
       {/* Top Row on Mobile / Left Section on Desktop: Brand + Mobile Quick Actions */}
       <div className="flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 shrink-0">

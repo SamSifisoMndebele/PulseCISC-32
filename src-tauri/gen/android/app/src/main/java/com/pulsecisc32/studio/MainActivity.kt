@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowInsetsController
+import android.view.WindowManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -23,10 +24,22 @@ class MainActivity : TauriActivity() {
     @Volatile
     private var isAppReady: Boolean = false
 
+    private var topInsetDp: Int = 0
+    private var bottomInsetDp: Int = 0
+    private var leftInsetDp: Int = 0
+    private var rightInsetDp: Int = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Initialize AndroidX Core SplashScreen and hold splash screen until React is rendered and ready
         val splashScreen = installSplashScreen()
         splashScreen.setKeepOnScreenCondition { !isAppReady }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val params = window.attributes
+            params.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            window.attributes = params
+        }
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
@@ -46,12 +59,14 @@ class MainActivity : TauriActivity() {
         super.onResume()
         currentIsDark = isSystemDarkMode()
         applySystemBarsTheme(currentIsDark)
+        injectInsets()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             applySystemBarsTheme(currentIsDark)
+            injectInsets()
         }
     }
 
@@ -60,6 +75,70 @@ class MainActivity : TauriActivity() {
         val isDark = (newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         currentIsDark = isDark
         applySystemBarsTheme(isDark)
+        window.decorView.postDelayed({ injectInsets() }, 50)
+    }
+
+    private fun getFallbackStatusBarHeight(): Int {
+        var result = 0
+        val resourceId = resources.getIdentifier("status_bar_height", "dimen", "android")
+        if (resourceId > 0) {
+            result = resources.getDimensionPixelSize(resourceId)
+        }
+        val density = resources.displayMetrics.density
+        return if (density > 0f) (result / density).toInt() else 24
+    }
+
+    private fun getFallbackNavigationBarHeight(): Int {
+        var result = 0
+        val resourceId = resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        if (resourceId > 0) {
+            result = resources.getDimensionPixelSize(resourceId)
+        }
+        val density = resources.displayMetrics.density
+        return if (density > 0f) (result / density).toInt() else 16
+    }
+
+    private fun updateInsets(insets: WindowInsetsCompat? = null) {
+        val density = resources.displayMetrics.density
+        val rootInsets = insets ?: ViewCompat.getRootWindowInsets(window.decorView)
+        val bars = rootInsets?.getInsets(
+            WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+        )
+
+        var top = if (bars != null && bars.top > 0) (bars.top / density).toInt() else 0
+        var bottom = if (bars != null && bars.bottom > 0) (bars.bottom / density).toInt() else 0
+        val left = if (bars != null && bars.left > 0) (bars.left / density).toInt() else 0
+        val right = if (bars != null && bars.right > 0) (bars.right / density).toInt() else 0
+
+        // If systemBars reported 0 (e.g. before initial layout pass), use system dimen fallbacks
+        if (top == 0) {
+            top = getFallbackStatusBarHeight()
+        }
+        if (bottom == 0) {
+            bottom = getFallbackNavigationBarHeight()
+        }
+
+        topInsetDp = top
+        bottomInsetDp = bottom
+        leftInsetDp = left
+        rightInsetDp = right
+    }
+
+    fun injectInsets() {
+        val webView = currentWebView ?: return
+        updateInsets()
+        val js = """
+            (function() {
+                var s = document.documentElement.style;
+                s.setProperty('--sat', '${topInsetDp}px');
+                s.setProperty('--sab', '${bottomInsetDp}px');
+                s.setProperty('--sal', '${leftInsetDp}px');
+                s.setProperty('--sar', '${rightInsetDp}px');
+            })();
+        """.trimIndent()
+        runOnUiThread {
+            webView.evaluateJavascript(js, null)
+        }
     }
 
     override fun onWebViewCreate(webView: WebView) {
@@ -83,12 +162,13 @@ class MainActivity : TauriActivity() {
 
         applySystemBarsTheme(currentIsDark)
 
-        // Register JavascriptInterface for dynamic theme sync & splash dismissal from React UI
+        // Register JavascriptInterface for dynamic theme sync, splash dismissal & insets from React UI
         webView.addJavascriptInterface(object {
             @JavascriptInterface
             fun setSystemBarsTheme(isDark: Boolean) {
                 runOnUiThread {
                     applySystemBarsTheme(isDark)
+                    injectInsets()
                 }
             }
 
@@ -96,31 +176,36 @@ class MainActivity : TauriActivity() {
             fun markAppReady() {
                 runOnUiThread {
                     isAppReady = true
+                    injectInsets()
                 }
+            }
+
+            @JavascriptInterface
+            fun syncInsets() {
+                runOnUiThread {
+                    injectInsets()
+                }
+            }
+
+            @JavascriptInterface
+            fun getInsets(): String {
+                updateInsets()
+                return """{"top":$topInsetDp,"bottom":$bottomInsetDp,"left":$leftInsetDp,"right":$rightInsetDp}"""
             }
         }, "AndroidBridge")
 
         // Propagate system bar insets to CSS variables (--sat, --sab, etc.)
         ViewCompat.setOnApplyWindowInsetsListener(webView) { _, insets ->
-            val bars = insets.getInsets(
-                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
-            )
-            val density = resources.displayMetrics.density
-            val topDp = (bars.top / density).toInt()
-            val bottomDp = (bars.bottom / density).toInt()
-            val leftDp = (bars.left / density).toInt()
-            val rightDp = (bars.right / density).toInt()
-
-            val js = """
-                (function() {
-                    document.documentElement.style.setProperty('--sat', '${topDp}px');
-                    document.documentElement.style.setProperty('--sab', '${bottomDp}px');
-                    document.documentElement.style.setProperty('--sal', '${leftDp}px');
-                    document.documentElement.style.setProperty('--sar', '${rightDp}px');
-                })();
-            """.trimIndent()
-            webView.evaluateJavascript(js, null)
+            updateInsets(insets)
+            injectInsets()
             insets
+        }
+        ViewCompat.requestApplyInsets(webView)
+
+        // Post staggered injections to guarantee insets are present once page DOM parses
+        val delays = longArrayOf(50, 150, 300, 600, 1200, 2000)
+        for (d in delays) {
+            window.decorView.postDelayed({ injectInsets() }, d)
         }
     }
 

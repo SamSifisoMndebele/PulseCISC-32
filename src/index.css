@@ -69,12 +69,29 @@ html, body, #root {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-/* Safe area padding utility for notched mobile devices */
+/* Safe area padding utilities for notched mobile devices and edge-to-edge system bars */
 .pb-safe {
   padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--sab, 0px));
 }
 .pt-safe {
   padding-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px));
+}
+.pl-safe {
+  padding-left: max(env(safe-area-inset-left, 0px), var(--sal, 0px));
+}
+.pr-safe {
+  padding-right: max(env(safe-area-inset-right, 0px), var(--sar, 0px));
+}
+
+/* Safe area padding with spacing offsets for headers and footers */
+.pt-safe-offset-2 {
+  padding-top: calc(max(env(safe-area-inset-top, 0px), var(--sat, 0px)) + 0.5rem);
+}
+.pb-safe-offset-1 {
+  padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--sab, 0px)) + 0.25rem);
+}
+.pb-safe-offset-2 {
+  padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), var(--sab, 0px)) + 0.5rem);
 }
 
 /* Hide scrollbar utility for horizontal pill strips on mobile */

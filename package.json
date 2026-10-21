@@ -11,7 +11,7 @@
     "tauri": "node scripts/run-tauri.mjs",
     "tauri:dev": "node scripts/run-tauri.mjs dev",
     "tauri:build": "node scripts/run-tauri.mjs build",
-    "android:build": "node scripts/run-tauri.mjs android build --apk --target aarch64",
+    "android:build": "node scripts/run-tauri.mjs android build --aab",
     "android:dev": "node scripts/run-tauri.mjs android dev"
   },
   "dependencies": {

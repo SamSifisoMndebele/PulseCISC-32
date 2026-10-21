@@ -38,42 +38,42 @@ export const PulseLogo: React.FC<PulseLogoProps> = ({
         <defs>
           {/* Background Gradient for Silicon Chip Substrate */}
           <linearGradient id="pl-chipBg" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#0e1726" />
-            <stop offset="50%" stop-color="#080c16" />
-            <stop offset="100%" stop-color="#03060c" />
+            <stop offset="0%" stopColor="#0e1726" />
+            <stop offset="50%" stopColor="#080c16" />
+            <stop offset="100%" stopColor="#03060c" />
           </linearGradient>
 
           {/* Outer Chip Border Gradient: Electric Cyan to Neon Purple */}
           <linearGradient id="pl-chipBorder" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#00f0ff" />
-            <stop offset="35%" stop-color="#38bdf8" />
-            <stop offset="70%" stop-color="#818cf8" />
-            <stop offset="100%" stop-color="#c084fc" />
+            <stop offset="0%" stopColor="#00f0ff" />
+            <stop offset="35%" stopColor="#38bdf8" />
+            <stop offset="70%" stopColor="#818cf8" />
+            <stop offset="100%" stopColor="#c084fc" />
           </linearGradient>
 
           {/* Pulse Waveform Gradient: Cyberpunk Cyan through Indigo to Fuchsia */}
           <linearGradient id="pl-pulseWave" x1="14" y1="32" x2="50" y2="32" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stop-color="#00f0ff" />
-            <stop offset="30%" stop-color="#38bdf8" />
-            <stop offset="65%" stop-color="#818cf8" />
-            <stop offset="100%" stop-color="#e879f9" />
+            <stop offset="0%" stopColor="#00f0ff" />
+            <stop offset="30%" stopColor="#38bdf8" />
+            <stop offset="65%" stopColor="#818cf8" />
+            <stop offset="100%" stopColor="#e879f9" />
           </linearGradient>
 
           {/* Pin Gradients */}
           <linearGradient id="pl-pinCyan" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#38bdf8" />
-            <stop offset="100%" stop-color="#0284c7" />
+            <stop offset="0%" stopColor="#38bdf8" />
+            <stop offset="100%" stopColor="#0284c7" />
           </linearGradient>
           <linearGradient id="pl-pinPurple" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#c084fc" />
-            <stop offset="100%" stop-color="#7c3aed" />
+            <stop offset="0%" stopColor="#c084fc" />
+            <stop offset="100%" stopColor="#7c3aed" />
           </linearGradient>
 
           {/* Radial Core Glow */}
           <radialGradient id="pl-dieCoreGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.22" />
-            <stop offset="70%" stop-color="#818cf8" stop-opacity="0.06" />
-            <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+            <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.22" />
+            <stop offset="70%" stopColor="#818cf8" stopOpacity="0.06" />
+            <stop offset="100%" stopColor="#000000" stopOpacity="0" />
           </radialGradient>
         </defs>
 

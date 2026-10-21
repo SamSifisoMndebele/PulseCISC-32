@@ -134,8 +134,8 @@ export class DatapathRenderer {
 
     // Execution & Storage Datapath components
     const bRegs: ComponentBounds = { x: 160, y: 210, w: 220, h: 265, title: 'Register File (8 x 32-bit)' };
-    const bLatchA: ComponentBounds = { x: 430, y: 235, w: 120, h: 55, title: 'Latch A (Dest)' };
-    const bLatchB: ComponentBounds = { x: 430, y: 315, w: 120, h: 55, title: 'Latch B (Src)' };
+    const bLatchA: ComponentBounds = { x: 430, y: 238, w: 120, h: 55, title: 'Latch A (Dest)' };
+    const bLatchB: ComponentBounds = { x: 430, y: 338, w: 120, h: 55, title: 'Latch B (Src)' };
 
     const bALU: ComponentBounds = { x: 600, y: 245, w: 140, h: 140, title: 'ALU 32-Bit' };
     const bFlags: ComponentBounds = { x: 790, y: 225, w: 125, h: 70, title: 'EFLAGS (ZF, SF, OF, CF)' };
@@ -546,12 +546,14 @@ export class DatapathRenderer {
       decodeColor
     );
 
-    // 5. IR -> Latch B (Immediate constant line)
+    // 5. IR -> Latch B (Immediate constant line routed around left of latches)
     const isImmActive = Boolean(state.latchBIsImmediate) && (activeCUPhase === 'DECODE' || isAct('IMM_TO_ALU'));
     drawLine(
       [
-        { x: b.bIR.x + 130, y: b.bIR.y + b.bIR.h },
-        { x: b.bIR.x + 130, y: b.bLatchB.y + 27 },
+        { x: b.bIR.x + 25, y: b.bIR.y + b.bIR.h },
+        { x: b.bIR.x + 25, y: 195 },
+        { x: 405, y: 195 },
+        { x: 405, y: b.bLatchB.y + 27 },
         { x: b.bLatchB.x, y: b.bLatchB.y + 27 },
       ],
       isImmActive,
@@ -582,7 +584,7 @@ export class DatapathRenderer {
     drawLine(
       [
         { x: b.bLatchA.x + b.bLatchA.w, y: b.bLatchA.y + 27 },
-        { x: b.bALU.x, y: b.bALU.y + 35 },
+        { x: b.bALU.x, y: b.bALU.y + 20 },
       ],
       isLatchToALUActive,
       execColor
@@ -590,7 +592,7 @@ export class DatapathRenderer {
     drawLine(
       [
         { x: b.bLatchB.x + b.bLatchB.w, y: b.bLatchB.y + 27 },
-        { x: b.bALU.x, y: b.bALU.y + 105 },
+        { x: b.bALU.x, y: b.bALU.y + 120 },
       ],
       isLatchToALUActive || isAct('IMM_TO_ALU'),
       execColor
@@ -600,7 +602,7 @@ export class DatapathRenderer {
     const isALUToOutActive = activeCUPhase === 'EXECUTE';
     drawLine(
       [
-        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 70 },
+        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 87 },
         { x: b.bALUOut.x, y: b.bALUOut.y + 27 },
       ],
       isALUToOutActive,
@@ -611,7 +613,7 @@ export class DatapathRenderer {
     const isALUToFlagsActive = activeCUPhase === 'EXECUTE';
     drawLine(
       [
-        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 30 },
+        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 53 },
         { x: b.bFlags.x, y: b.bFlags.y + 35 },
       ],
       isALUToFlagsActive,
@@ -713,8 +715,8 @@ export class DatapathRenderer {
     const isBranchActive = isAct('BRANCH_TARGET_TO_EIP') || isAct('JUMP_TARGET_TO_EIP');
     drawLine(
       [
-        { x: b.bALU.x + 40, y: b.bALU.y },
-        { x: b.bALU.x + 40, y: 175 },
+        { x: b.bALU.x + 100, y: b.bALU.y + 25 },
+        { x: b.bALU.x + 100, y: 175 },
         { x: b.bEIP.x + 60, y: 175 },
         { x: b.bEIP.x + 60, y: b.bEIP.y + b.bEIP.h },
       ],
@@ -807,8 +809,10 @@ export class DatapathRenderer {
 
           if (state.latchBIsImmediate) {
             const pathImm: Point2D[] = [
-              { x: b.bIR.x + 130, y: b.bIR.y + b.bIR.h },
-              { x: b.bIR.x + 130, y: b.bLatchB.y + 27 },
+              { x: b.bIR.x + 25, y: b.bIR.y + b.bIR.h },
+              { x: b.bIR.x + 25, y: 195 },
+              { x: 405, y: 195 },
+              { x: 405, y: b.bLatchB.y + 27 },
               { x: b.bLatchB.x, y: b.bLatchB.y + 27 },
             ];
             ParticleSystem.renderPacket(ctx, pathImm, pRegToLatch, '#f59e0b', '#fbbf24', toHex32(to.latchB), 3);
@@ -825,11 +829,11 @@ export class DatapathRenderer {
         if (pIn >= 0 && pIn <= 1) {
           const pathA: Point2D[] = [
             { x: b.bLatchA.x + b.bLatchA.w, y: b.bLatchA.y + 27 },
-            { x: b.bALU.x, y: b.bALU.y + 35 },
+            { x: b.bALU.x, y: b.bALU.y + 20 },
           ];
           const pathB: Point2D[] = [
             { x: b.bLatchB.x + b.bLatchB.w, y: b.bLatchB.y + 27 },
-            { x: b.bALU.x, y: b.bALU.y + 105 },
+            { x: b.bALU.x, y: b.bALU.y + 120 },
           ];
           ParticleSystem.renderPacket(ctx, pathA, pIn, execCol, execGlow, undefined, 3);
           ParticleSystem.renderPacket(ctx, pathB, pIn, execCol, execGlow, undefined, 3);
@@ -838,21 +842,21 @@ export class DatapathRenderer {
         const pOut = (P - 0.5) / 0.42;
         if (pOut >= 0 && pOut <= 1) {
           const pathOut: Point2D[] = [
-            { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 70 },
+            { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 87 },
             { x: b.bALUOut.x, y: b.bALUOut.y + 27 },
           ];
           ParticleSystem.renderPacket(ctx, pathOut, pOut, execCol, execGlow, toHex32(to.aluOut), 4);
 
           const pathFlags: Point2D[] = [
-            { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 30 },
+            { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 53 },
             { x: b.bFlags.x, y: b.bFlags.y + 35 },
           ];
           ParticleSystem.renderPacket(ctx, pathFlags, pOut, execCol, execGlow, undefined, 2);
 
           if (state.activeBuses.includes('BRANCH_TARGET_TO_EIP') || state.activeBuses.includes('JUMP_TARGET_TO_EIP')) {
             const pathBranch: Point2D[] = [
-              { x: b.bALU.x + 40, y: b.bALU.y },
-              { x: b.bALU.x + 40, y: 175 },
+              { x: b.bALU.x + 100, y: b.bALU.y + 25 },
+              { x: b.bALU.x + 100, y: 175 },
               { x: b.bEIP.x + 60, y: 175 },
               { x: b.bEIP.x + 60, y: b.bEIP.y + b.bEIP.h },
             ];
@@ -1014,8 +1018,10 @@ export class DatapathRenderer {
 
       if (state.latchBIsImmediate) {
         const pathImm: Point2D[] = [
-          { x: b.bIR.x + 130, y: b.bIR.y + b.bIR.h },
-          { x: b.bIR.x + 130, y: b.bLatchB.y + 27 },
+          { x: b.bIR.x + 25, y: b.bIR.y + b.bIR.h },
+          { x: b.bIR.x + 25, y: 195 },
+          { x: 405, y: 195 },
+          { x: 405, y: b.bLatchB.y + 27 },
           { x: b.bLatchB.x, y: b.bLatchB.y + 27 },
         ];
         renderFlow(pathImm, '#f59e0b', '#fbbf24', 2);
@@ -1029,23 +1035,23 @@ export class DatapathRenderer {
     } else if (activeCUPhase === 'EXECUTE') {
       const pathA: Point2D[] = [
         { x: b.bLatchA.x + b.bLatchA.w, y: b.bLatchA.y + 27 },
-        { x: b.bALU.x, y: b.bALU.y + 35 },
+        { x: b.bALU.x, y: b.bALU.y + 20 },
       ];
       const pathB: Point2D[] = [
         { x: b.bLatchB.x + b.bLatchB.w, y: b.bLatchB.y + 27 },
-        { x: b.bALU.x, y: b.bALU.y + 105 },
+        { x: b.bALU.x, y: b.bALU.y + 120 },
       ];
       renderFlow(pathA, execCol, execGlow, 2);
       renderFlow(pathB, execCol, execGlow, 2);
 
       const pathOut: Point2D[] = [
-        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 70 },
+        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 87 },
         { x: b.bALUOut.x, y: b.bALUOut.y + 27 },
       ];
       renderFlow(pathOut, execCol, execGlow, 2);
 
       const pathFlags: Point2D[] = [
-        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 30 },
+        { x: b.bALU.x + b.bALU.w, y: b.bALU.y + 53 },
         { x: b.bFlags.x, y: b.bFlags.y + 35 },
       ];
       renderFlow(pathFlags, execCol, execGlow, 1);
@@ -1439,8 +1445,8 @@ export class DatapathRenderer {
 
     ctx.shadowBlur = 0;
     ctx.fillStyle = isExec ? activeColor : THEME.textSecondary;
-    ctx.font = 'bold 12px "Inter", sans-serif';
-    ctx.fillText('ALU 32-Bit', box.x + 35, box.y + 30);
+    ctx.font = 'bold 11px "Inter", sans-serif';
+    ctx.fillText('ALU 32-Bit', box.x + 14, box.y + 32);
 
     let opSymbol = '+';
     if (state.decoded) {
@@ -1544,8 +1550,8 @@ export class DatapathRenderer {
       IR: { x: 465, y: 70, w: 185, h: 85 },
       CU: { x: 695, y: 45, w: 375, h: 115 },
       REGS: { x: 160, y: 210, w: 220, h: 265 },
-      LATCH_A: { x: 430, y: 235, w: 120, h: 55 },
-      LATCH_B: { x: 430, y: 315, w: 120, h: 55 },
+      LATCH_A: { x: 430, y: 238, w: 120, h: 55 },
+      LATCH_B: { x: 430, y: 338, w: 120, h: 55 },
       ALU: { x: 600, y: 245, w: 140, h: 140 },
       FLAGS: { x: 790, y: 225, w: 120, h: 70 },
       ALU_OUT: { x: 790, y: 320, w: 120, h: 55 },

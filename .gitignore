@@ -21,6 +21,12 @@ src-tauri/gen/schemas/
 src-tauri/WixTools/
 saved_programs/
 
+# Android build outputs & packages
+*.apk
+*.aab
+.gradle/
+src-tauri/gen/android/app/build/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

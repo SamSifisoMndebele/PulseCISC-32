@@ -6,13 +6,101 @@ export interface ProgramPreset {
   name: string;
   description: string;
   code: string;
+  isCustom?: boolean;
+  updatedAt?: number;
+}
+
+const USER_PROGRAMS_STORAGE_KEY = 'pulsecisc_user_programs';
+const ACTIVE_SESSION_STORAGE_KEY = 'pulsecisc_active_session';
+
+export interface ActiveProgramSession {
+  selectedPresetId: string;
+  code: string;
+}
+
+export const DEFAULT_CUSTOM_PROGRAM_TEMPLATE = `; Custom x86 Assembly Program
+; Automatically persisted in local storage
+
+MOV EAX, 10         ; Load 10 into EAX
+MOV EBX, 20         ; Load 20 into EBX
+ADD EAX, EBX        ; EAX = EAX + EBX (30)
+
+PRINT EAX           ; Output result to Console
+HLT                 ; Halt CPU execution
+`;
+
+export function loadUserPrograms(): ProgramPreset[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(USER_PROGRAMS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is ProgramPreset =>
+          item &&
+          typeof item.id === 'string' &&
+          typeof item.name === 'string' &&
+          typeof item.code === 'string'
+      )
+      .map((item) => ({
+        ...item,
+        description: item.description || 'User custom program saved in local storage.',
+        isCustom: true,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveUserPrograms(programs: ProgramPreset[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(USER_PROGRAMS_STORAGE_KEY, JSON.stringify(programs));
+  } catch (err) {
+    console.error('Failed to persist user programs to localStorage:', err);
+  }
+}
+
+export function loadActiveSession(): ActiveProgramSession | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed.selectedPresetId === 'string' &&
+      typeof parsed.code === 'string'
+    ) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveActiveSession(session: ActiveProgramSession): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function getShortProgramName(name: string): string {
+  const dashIdx = name.lastIndexOf(' - ');
+  return dashIdx !== -1 ? name.slice(0, dashIdx) : name;
 }
 
 export const PRESETS: ProgramPreset[] = [
   // --- Beginner Examples ---
   {
     id: 'hello_add',
-    name: '1. Beginner: Hello Math (MOV & ADD)',
+    name: '1. Hello Math (MOV & ADD) - Beginner',
     description: 'The simplest introduction: loads numbers into EAX and EBX, adds them, and prints the result.',
     code: `; PulseCISC-32: Introductory Lesson 1
 ; Learn how CPU registers and addition work
@@ -27,7 +115,7 @@ HLT                 ; Halt processor clock
   },
   {
     id: 'sub_flags',
-    name: '2. Beginner: Subtraction & Flags (SF & ZF)',
+    name: '2. Subtraction & Flags (SF & ZF) - Beginner',
     description: 'Demonstrates subtraction resulting in a negative number (Sign Flag / SF) and adding back to zero (Zero Flag / ZF).',
     code: `; PulseCISC-32: Introductory Lesson 2
 ; Learn subtraction and watch EFLAGS in action
@@ -46,7 +134,7 @@ HLT                 ; Execution finished
   },
   {
     id: 'ram_basics',
-    name: '3. Beginner: RAM Store & Load (Memory)',
+    name: '3. RAM Store & Load (Memory) - Beginner',
     description: 'Demonstrates storing a value into Data RAM at 0x2000 and loading it back into another register.',
     code: `; PulseCISC-32: Introductory Lesson 3
 ; Learn how the CPU interacts with 64 KB RAM (Data Segment starts at 0x2000)
@@ -65,7 +153,7 @@ HLT                 ; Done
   },
   {
     id: 'countdown_loop',
-    name: '4. Beginner: Simple Loop (CMP & JNE)',
+    name: '4. Simple Loop (CMP & JNE) - Beginner',
     description: 'A 3-step countdown loop illustrating conditional branching using CMP and JNE.',
     code: `; PulseCISC-32: Introductory Lesson 4
 ; Learn loops: Count down from 3 to 1
@@ -86,7 +174,7 @@ HLT
   // --- Intermediate & Advanced Programs ---
   {
     id: 'fibonacci',
-    name: '5. Intermediate: Fibonacci Sequence',
+    name: '5. Fibonacci Sequence - Intermediate',
     description: 'Computes first 8 Fibonacci numbers and writes them consecutively into Data RAM at 0x2000.',
     code: `; PulseCISC-32: Fibonacci Sequence Generator
 ; Computes first 8 Fibonacci numbers into Data RAM at 0x2000
@@ -113,7 +201,7 @@ HLT                 ; Execution finished!
   },
   {
     id: 'factorial',
-    name: '6. Intermediate: Factorial Calculator',
+    name: '6. Factorial Calculator - Intermediate',
     description: 'Computes factorial N! iteratively (5! = 120) using CMP and conditional branching.',
     code: `; PulseCISC-32: Factorial Calculator
 ; Computes 5! = 120 (0x78) into EAX
@@ -148,7 +236,7 @@ fact_done:
   },
   {
     id: 'arraySum',
-    name: '7. Intermediate: Array Summation',
+    name: '7. Array Summation - Intermediate',
     description: 'Initializes an array in Data RAM at 0x2000, computes the sum in EAX, and stores the total at 0x2020.',
     code: `; PulseCISC-32: Array Summation
 ; Writes [10, 20, 30, 40] into RAM at 0x2000, then sums them
@@ -185,7 +273,7 @@ HLT
   },
   {
     id: 'bitwise',
-    name: '8. Advanced: Bitwise Logic & Sub-Registers',
+    name: '8. Bitwise Logic & Sub-Registers - Advanced',
     description: 'Demonstrates XOR register clearing, AND/OR bitmasking, and 16-bit sub-register manipulation.',
     code: `; PulseCISC-32: Bitwise Logic & Sub-Registers
 ; Demonstrates classic x86 idioms
@@ -216,7 +304,7 @@ HLT
   },
   {
     id: 'syscalls_db',
-    name: '9. Authentic x86: System Calls (INT 0x80 & DB)',
+    name: '9. System Calls (INT 0x80 & DB) - Authentic x86',
     description: 'Real OS interface: uses INT 0x80 (sys_write and sys_exit) with DB string storage in Data RAM (0x2000).',
     code: `; PulseCISC-32: Authentic Linux x86 System Calls
 ; Real processors do not have a PRINT instruction.
@@ -247,7 +335,7 @@ msg: DB "Hello from INT 0x80!", 0
   },
   {
     id: 'function_call_stack',
-    name: '10. CPU Concept: Subroutines & Call Stack (CALL & RET)',
+    name: '10. Subroutines & Call Stack (CALL & RET) - CPU Concept',
     description: 'Hardware stack and activation frames: uses PUSH, POP, CALL, and RET with standard calling convention.',
     code: `; PulseCISC-32: Function Calls & Stack Frames
 ; Demonstrates hardware stack operations:
@@ -283,7 +371,7 @@ add_numbers:
   },
   {
     id: 'recursive_factorial',
-    name: '11. CPU Concept: Recursive Functions (Stack Depth)',
+    name: '11. Recursive Functions (Stack Depth) - CPU Concept',
     description: 'Recursive Factorial (5! = 120): demonstrates stack growth, activation records, and base condition testing.',
     code: `; PulseCISC-32: Recursive Factorial (5! = 120)
 ; Demonstrates recursion and stack memory allocation
@@ -326,7 +414,7 @@ fact_done:
   },
   {
     id: 'multi_precision_adc',
-    name: '12. CPU Concept: 64-bit Multi-Precision Math (ADC & CF)',
+    name: '12. 64-bit Multi-Precision Math (ADC & CF) - CPU Concept',
     description: 'Multi-precision 64-bit addition using 32-bit registers, demonstrating the Carry Flag (CF) and ADC instruction.',
     code: `; PulseCISC-32: 64-Bit Addition using 32-Bit ALU
 ; Demonstrates Carry Flag (CF) propagation:
@@ -353,7 +441,7 @@ HLT
   },
   {
     id: 'bit_shifts_twiddling',
-    name: '13. CPU Concept: Bit Shifts & Masking (SHL, SAR, TEST)',
+    name: '13. Bit Shifts & Masking (SHL, SAR, TEST) - CPU Concept',
     description: 'Fast binary arithmetic and bit twiddling: SHL (x4), SAR (/2 signed), ROL, and TEST non-destructive masking.',
     code: `; PulseCISC-32: Bit Shifts & Masking
 ; Demonstrates arithmetic shifts and bitwise manipulation
@@ -386,7 +474,7 @@ HLT
   },
   {
     id: 'masm_proc_invoke',
-    name: '14. MASM Style: PROC, LOCAL & INVOKE (.MODEL FLAT)',
+    name: '14. PROC, LOCAL & INVOKE (.MODEL FLAT) - MASM Style',
     description: 'Authentic 32-bit MASM syntax: uses .MODEL FLAT, STDCALL, PROC with typed parameters, LOCAL stack variables, and INVOKE.',
     code: `; PulseCISC-32: Authentic MASM Procedure & INVOKE Demo
 .386
@@ -422,7 +510,7 @@ END main
   },
   {
     id: 'masm_struct_sib',
-    name: '15. MASM Style: STRUCT & Complex SIB Addressing',
+    name: '15. STRUCT & Complex SIB Addressing - MASM Style',
     description: 'Demonstrates STRUCT ... ENDS field offsets, DUP array initialization, and Scale-Index-Base [EBX + ESI*4] addressing.',
     code: `; PulseCISC-32: MASM STRUCT & Scale-Index-Base (SIB) Addressing
 .386
@@ -466,7 +554,7 @@ END main
   },
   {
     id: 'masm_structured_control',
-    name: '16. MASM Style: Structured Control (.IF, .ELSE, .WHILE)',
+    name: '16. Structured Control (.IF, .ELSE, .WHILE) - MASM Style',
     description: 'Uses high-level MASM structured directives (.WHILE, .IF, .ELSE, .ENDIF) that automatically compile into CMP and conditional jumps.',
     code: `; PulseCISC-32: MASM Structured Control Directives (.IF / .WHILE)
 .386
@@ -506,7 +594,7 @@ END main
   },
   {
     id: 'x86_string_ops',
-    name: '17. x86 Primitives: REP MOVSD, STOSD, CMOV & BSWAP',
+    name: '17. REP MOVSD, STOSD, CMOV & BSWAP - x86 Primitives',
     description: 'Hardware block memory operations (CLD, REP STOSD, REP MOVSD), conditional move (CMOVG), and endianness swap (BSWAP).',
     code: `; PulseCISC-32: Hardware String Primitives, CMOVcc & BSWAP
 .386

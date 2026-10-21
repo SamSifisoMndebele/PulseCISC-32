@@ -71,10 +71,10 @@ html, body, #root {
 
 /* Safe area padding utility for notched mobile devices */
 .pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), var(--sab, 0px));
 }
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: max(env(safe-area-inset-top, 0px), var(--sat, 0px));
 }
 
 /* Hide scrollbar utility for horizontal pill strips on mobile */
@@ -105,7 +105,9 @@ html.theme-light .bg-\[\#090d16\]\/90,
 html.theme-light .bg-\[\#0d121d\],
 html.theme-light .bg-\[\#070a12\],
 html.theme-light .bg-\[\#0d121f\],
-html.theme-light .bg-\[\#0b101d\] {
+html.theme-light .bg-\[\#0b101d\],
+html.theme-light .bg-\[\#0b101b\],
+html.theme-light .bg-\[\#0c101d\] {
   background-color: #ffffff !important;
 }
 

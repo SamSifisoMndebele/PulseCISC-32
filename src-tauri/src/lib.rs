@@ -25,7 +25,7 @@ struct EngineInfo {
 #[tauri::command]
 fn rust_engine_info() -> EngineInfo {
     EngineInfo {
-        backend: "Rust Native Core + Tauri v2".to_string(),
+        backend: "PulseCISC-32 High-Speed Execution Core".to_string(),
         arch: std::env::consts::ARCH.to_string(),
         os: std::env::consts::OS.to_string(),
         threads: std::thread::available_parallelism()

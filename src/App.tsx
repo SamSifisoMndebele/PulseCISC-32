@@ -4,7 +4,15 @@ import { CPU } from './core/cpu';
 import { Memory } from './core/memory';
 import { Assembler } from './core/assembler';
 import type { CPUMicroState, RegisterId, AssembledProgram } from './core/types';
-import { PRESETS } from './samples/presets';
+import {
+  PRESETS,
+  DEFAULT_CUSTOM_PROGRAM_TEMPLATE,
+  loadUserPrograms,
+  saveUserPrograms,
+  loadActiveSession,
+  saveActiveSession,
+  type ProgramPreset,
+} from './samples/presets';
 import { Navbar, type ThemePreference } from './components/Navbar';
 import { CodeEditor } from './components/CodeEditor';
 import { MachineCodeView } from './components/MachineCodeView';
@@ -22,7 +30,6 @@ import {
   getRustEngineInfo,
   analyzeAssemblyPsi,
   runNativeTurboBenchmark,
-  saveAsmFileNative,
   type EngineInfo,
   type PsiAnalysisReport,
   type NativeTurboResult,
@@ -85,6 +92,28 @@ export function App() {
     document.documentElement.classList.toggle('theme-light', isLight);
     setVisualizerTheme(isLight);
     localStorage.setItem('pulsecisc_theme_pref', themePref);
+
+    // Synchronize browser theme-color meta tag for mobile status bar
+    const metaThemeColor =
+      document.querySelector('meta[name="theme-color"]:not([media])') ||
+      document.querySelector('meta[name="theme-color"]');
+    if (metaThemeColor) {
+      metaThemeColor.setAttribute('content', isLight ? '#ffffff' : '#0d121d');
+    }
+
+    // Synchronize native Android top status bar & bottom navigation bar
+    try {
+      const bridge = (
+        window as unknown as {
+          AndroidBridge?: { setSystemBarsTheme?: (isDark: boolean) => void };
+        }
+      ).AndroidBridge;
+      if (bridge?.setSystemBarsTheme) {
+        bridge.setSystemBarsTheme(!isLight);
+      }
+    } catch {
+      // Ignore if not running in Android native WebView
+    }
   }, [resolvedTheme, themePref]);
 
   const handleCycleTheme = useCallback(() => {
@@ -108,11 +137,27 @@ export function App() {
   }
   const cpu = cpuRef.current;
 
+  // User Custom Programs & Persisted Session State
+  const [userPrograms, setUserPrograms] = useState<ProgramPreset[]>(() => loadUserPrograms());
+
+  const [initialProgramState] = useState<{ presetId: string; code: string }>(() => {
+    const savedUserProgs = loadUserPrograms();
+    const session = loadActiveSession();
+    if (session) {
+      const existsInCustom = savedUserProgs.some((p) => p.id === session.selectedPresetId);
+      const existsInBuiltIn = PRESETS.some((p) => p.id === session.selectedPresetId);
+      if (existsInCustom || existsInBuiltIn) {
+        return { presetId: session.selectedPresetId, code: session.code };
+      }
+    }
+    return { presetId: PRESETS[0].id, code: PRESETS[0].code };
+  });
+
   // Preset & Editor State
-  const [selectedPresetId, setSelectedPresetId] = useState<string>(PRESETS[0].id);
-  const [code, setCode] = useState<string>(PRESETS[0].code);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(initialProgramState.presetId);
+  const [code, setCode] = useState<string>(initialProgramState.code);
   const [assembled, setAssembled] = useState<AssembledProgram>(() =>
-    Assembler.assemble(PRESETS[0].code, {
+    Assembler.assemble(initialProgramState.code, {
       codeStart: systemConfig.codeStart,
       codeEnd: Math.max(0, systemConfig.dataStart - 1),
       dataStart: systemConfig.dataStart,
@@ -122,18 +167,54 @@ export function App() {
 
   // CPU Snapshot State
   const [cpuState, setCpuState] = useState<CPUMicroState>(() => {
-    const initAsm = Assembler.assemble(PRESETS[0].code, {
+    const initAsm = Assembler.assemble(initialProgramState.code, {
       codeStart: systemConfig.codeStart,
       codeEnd: Math.max(0, systemConfig.dataStart - 1),
       dataStart: systemConfig.dataStart,
       dataEnd: systemConfig.memorySize - 1,
     });
-    cpu.memory.loadCode(initAsm.codeBytes);
-    if (initAsm.dataBytes && initAsm.dataBytes.length > 0) {
-      cpu.memory.loadData(initAsm.dataBytes);
+    if (initAsm.errors.length === 0) {
+      cpu.reset(initAsm.entryPoint);
+      cpu.memory.loadCode(initAsm.codeBytes);
+      if (initAsm.dataBytes && initAsm.dataBytes.length > 0) {
+        cpu.memory.loadData(initAsm.dataBytes);
+      }
     }
     return cpu.getSnapshot();
   });
+
+  // Active Program Metadata (Custom or Built-in)
+  const currentProgram: ProgramPreset | undefined =
+    userPrograms.find((p) => p.id === selectedPresetId) ??
+    PRESETS.find((p) => p.id === selectedPresetId);
+
+  const builtInSample = PRESETS.find((p) => p.id === selectedPresetId);
+  const isDirtySample = Boolean(builtInSample && code !== builtInSample.code);
+
+  // Persist active session whenever selectedPresetId or code changes
+  useEffect(() => {
+    saveActiveSession({ selectedPresetId, code });
+  }, [selectedPresetId, code]);
+
+  // Handle code changes and auto-persist when editing a user custom program
+  const handleCodeChange = useCallback(
+    (newCode: string) => {
+      setCode(newCode);
+      setUserPrograms((prev) => {
+        const idx = prev.findIndex((p) => p.id === selectedPresetId);
+        if (idx === -1) return prev;
+        const updated = [...prev];
+        updated[idx] = {
+          ...updated[idx],
+          code: newCode,
+          updatedAt: Date.now(),
+        };
+        saveUserPrograms(updated);
+        return updated;
+      });
+    },
+    [selectedPresetId]
+  );
 
   // Execution Controls & Modals
   const [isRunning, setIsRunning] = useState<boolean>(false);
@@ -188,7 +269,7 @@ export function App() {
           id: Date.now(),
           cycle: cpu.cycles,
           type: 'system',
-          text: `[Rust Core Turbo] Executed ${res.instructions_executed.toLocaleString()} native 32-bit ALU instructions in ${(
+          text: `[ALU Turbo Benchmark] Executed ${res.instructions_executed.toLocaleString()} native 32-bit ALU instructions in ${(
             res.elapsed_us / 1000
           ).toFixed(2)} ms (${res.effective_mips.toFixed(1)} MIPS)`,
           timestamp: Date.now(),
@@ -200,22 +281,6 @@ export function App() {
     },
     [cpu]
   );
-
-  const handleSaveAsmFile = useCallback(async () => {
-    try {
-      const savedPath = await saveAsmFileNative(selectedPresetId || 'program', code);
-      cpu.consoleOutput.push({
-        id: Date.now(),
-        cycle: cpu.cycles,
-        type: 'info',
-        text: `[File Saved] Assembly source saved to: ${savedPath}`,
-        timestamp: Date.now(),
-      });
-      setCpuState(cpu.getSnapshot());
-    } catch (err) {
-      console.error('Failed to save .asm file:', err);
-    }
-  }, [selectedPresetId, code, cpu]);
 
   // Resizable & Collapsible Dock State (persisted in localStorage for Desktop)
   const [isLeftOpen, setIsLeftOpen] = useState<boolean>(() => {
@@ -289,29 +354,148 @@ export function App() {
     }
   }, [code, cpu, systemConfig]);
 
-  // Load preset program
-  const handleSelectPreset = (presetId: string) => {
-    setIsRunning(false);
-    setSelectedPresetId(presetId);
-    const preset = PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
+  // Load preset or user custom program
+  const handleSelectPreset = useCallback(
+    (presetId: string) => {
+      setIsRunning(false);
+      const preset =
+        userPrograms.find((p) => p.id === presetId) ??
+        PRESETS.find((p) => p.id === presetId);
+      if (!preset) return;
 
-    setCode(preset.code);
-    const result = Assembler.assemble(preset.code, {
+      setSelectedPresetId(preset.id);
+      setCode(preset.code);
+      const result = Assembler.assemble(preset.code, {
+        codeStart: systemConfig.codeStart,
+        codeEnd: Math.max(0, systemConfig.dataStart - 1),
+        dataStart: systemConfig.dataStart,
+        dataEnd: systemConfig.memorySize - 1,
+      });
+      setAssembled(result);
+
+      if (result.errors.length === 0) {
+        cpu.reset(result.entryPoint);
+        cpu.memory.loadCode(result.codeBytes);
+        if (result.dataBytes && result.dataBytes.length > 0) {
+          cpu.memory.loadData(result.dataBytes);
+        }
+        setCpuState(cpu.getSnapshot());
+      }
+    },
+    [userPrograms, systemConfig, cpu]
+  );
+
+  // Create and persist a new custom program locally
+  const handleCreateNewProgram = useCallback(
+    (name: string, useCurrentCode: boolean) => {
+      setIsRunning(false);
+      const newCode = useCurrentCode ? code : DEFAULT_CUSTOM_PROGRAM_TEMPLATE;
+      const newProgram: ProgramPreset = {
+        id: `custom_${Date.now()}`,
+        name: name.trim() || `My Program ${userPrograms.length + 1}`,
+        description: 'Custom user assembly program saved in local storage.',
+        code: newCode,
+        isCustom: true,
+        updatedAt: Date.now(),
+      };
+
+      const updated = [newProgram, ...userPrograms];
+      setUserPrograms(updated);
+      saveUserPrograms(updated);
+
+      setSelectedPresetId(newProgram.id);
+      setCode(newCode);
+      setIsLeftOpen(true);
+      setLeftTab('editor');
+      setMobileTab('code');
+
+      const result = Assembler.assemble(newCode, {
+        codeStart: systemConfig.codeStart,
+        codeEnd: Math.max(0, systemConfig.dataStart - 1),
+        dataStart: systemConfig.dataStart,
+        dataEnd: systemConfig.memorySize - 1,
+      });
+      setAssembled(result);
+
+      if (result.errors.length === 0) {
+        cpu.reset(result.entryPoint);
+        cpu.memory.loadCode(result.codeBytes);
+        if (result.dataBytes && result.dataBytes.length > 0) {
+          cpu.memory.loadData(result.dataBytes);
+        }
+        setCpuState(cpu.getSnapshot());
+      }
+    },
+    [code, userPrograms, systemConfig, cpu]
+  );
+
+  // Quick-create a blank custom program from Navbar
+  const handleQuickCreateCustomProgram = useCallback(() => {
+    handleCreateNewProgram(`My Program ${userPrograms.length + 1}`, false);
+  }, [handleCreateNewProgram, userPrograms.length]);
+
+  // Rename active custom program
+  const handleRenameCustomProgram = useCallback(
+    (newName: string) => {
+      const trimmed = newName.trim();
+      if (!trimmed) return;
+      setUserPrograms((prev) => {
+        const updated = prev.map((p) =>
+          p.id === selectedPresetId ? { ...p, name: trimmed, updatedAt: Date.now() } : p
+        );
+        saveUserPrograms(updated);
+        return updated;
+      });
+    },
+    [selectedPresetId]
+  );
+
+  // Delete active custom program
+  const handleDeleteCustomProgram = useCallback(() => {
+    const remaining = userPrograms.filter((p) => p.id !== selectedPresetId);
+    setUserPrograms(remaining);
+    saveUserPrograms(remaining);
+
+    const fallback = remaining[0] ?? PRESETS[0];
+    setSelectedPresetId(fallback.id);
+    setCode(fallback.code);
+    const result = Assembler.assemble(fallback.code, {
       codeStart: systemConfig.codeStart,
       codeEnd: Math.max(0, systemConfig.dataStart - 1),
       dataStart: systemConfig.dataStart,
       dataEnd: systemConfig.memorySize - 1,
     });
     setAssembled(result);
+    if (result.errors.length === 0) {
+      cpu.reset(result.entryPoint);
+      cpu.memory.loadCode(result.codeBytes);
+      if (result.dataBytes && result.dataBytes.length > 0) {
+        cpu.memory.loadData(result.dataBytes);
+      }
+      setCpuState(cpu.getSnapshot());
+    }
+  }, [userPrograms, selectedPresetId, systemConfig, cpu]);
 
+  // Revert modified built-in sample back to original code
+  const handleResetSampleCode = useCallback(() => {
+    const sample = PRESETS.find((p) => p.id === selectedPresetId);
+    if (!sample) return;
+    setIsRunning(false);
+    setCode(sample.code);
+    const result = Assembler.assemble(sample.code, {
+      codeStart: systemConfig.codeStart,
+      codeEnd: Math.max(0, systemConfig.dataStart - 1),
+      dataStart: systemConfig.dataStart,
+      dataEnd: systemConfig.memorySize - 1,
+    });
+    setAssembled(result);
     cpu.reset(result.entryPoint);
     cpu.memory.loadCode(result.codeBytes);
     if (result.dataBytes && result.dataBytes.length > 0) {
       cpu.memory.loadData(result.dataBytes);
     }
     setCpuState(cpu.getSnapshot());
-  };
+  }, [selectedPresetId, systemConfig, cpu]);
 
   // Step 1 Micro-Operation (FSM phase)
   const handleStepMicro = useCallback(() => {
@@ -565,11 +749,12 @@ export function App() {
           onClockSpeedChange={setClockSpeed}
           selectedPresetId={selectedPresetId}
           onSelectPreset={handleSelectPreset}
+          userPrograms={userPrograms}
+          onCreateCustomProgram={handleQuickCreateCustomProgram}
           memorySizeLabel={`${getMemoryCapacityLabel(systemConfig.memorySize)} RAM`}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenCheatsheet={() => setIsCheatsheetOpen(true)}
           onOpenPsiInspector={() => setIsPsiInspectorOpen(true)}
-          onSaveAsmFile={handleSaveAsmFile}
           psiParseTimeUs={psiReport?.parse_time_us}
           psiWarningCount={psiReport?.diagnostics.length ?? 0}
           isNativeTauri={engineInfo?.isNativeTauri}
@@ -652,11 +837,18 @@ export function App() {
                 {leftTab === 'editor' ? (
                   <CodeEditor
                     code={code}
-                    onChange={setCode}
+                    onChange={handleCodeChange}
                     onAssemble={handleAssemble}
                     activeLineIndex={activeLineIndex}
                     errors={assembled.errors}
                     onShowCheatsheet={() => setIsCheatsheetOpen(true)}
+                    currentProgram={currentProgram}
+                    isDirtySample={isDirtySample}
+                    customProgramCount={userPrograms.length}
+                    onCreateNewProgram={handleCreateNewProgram}
+                    onRenameCustomProgram={handleRenameCustomProgram}
+                    onDeleteCustomProgram={handleDeleteCustomProgram}
+                    onResetSampleCode={handleResetSampleCode}
                   />
                 ) : (
                   <MachineCodeView
@@ -870,11 +1062,18 @@ export function App() {
                 {leftTab === 'editor' ? (
                   <CodeEditor
                     code={code}
-                    onChange={setCode}
+                    onChange={handleCodeChange}
                     onAssemble={handleAssemble}
                     activeLineIndex={activeLineIndex}
                     errors={assembled.errors}
                     onShowCheatsheet={() => setIsCheatsheetOpen(true)}
+                    currentProgram={currentProgram}
+                    isDirtySample={isDirtySample}
+                    customProgramCount={userPrograms.length}
+                    onCreateNewProgram={handleCreateNewProgram}
+                    onRenameCustomProgram={handleRenameCustomProgram}
+                    onDeleteCustomProgram={handleDeleteCustomProgram}
+                    onResetSampleCode={handleResetSampleCode}
                   />
                 ) : (
                   <MachineCodeView

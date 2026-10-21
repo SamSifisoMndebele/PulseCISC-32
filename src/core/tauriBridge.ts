@@ -70,7 +70,7 @@ export async function getRustEngineInfo(): Promise<EngineInfo> {
     }
   }
   return {
-    backend: 'Vite Hybrid Dev Runtime (Launch via tauri:dev for Native Rust Core)',
+    backend: 'PulseCISC-32 High-Speed Execution Core',
     arch: 'x86_64',
     os: 'windows',
     threads: typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4,

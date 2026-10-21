@@ -16,11 +16,12 @@ import {
   Moon,
   Monitor,
   Sparkles,
-  Download,
   MoreVertical,
+  Plus,
+  ChevronDown,
 } from 'lucide-react';
 import { PulseLogo } from './PulseLogo';
-import { PRESETS } from '../samples/presets';
+import { PRESETS, getShortProgramName, type ProgramPreset } from '../samples/presets';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 
@@ -34,11 +35,12 @@ interface NavbarProps {
   onClockSpeedChange: (speed: number) => void;
   selectedPresetId: string;
   onSelectPreset: (presetId: string) => void;
+  userPrograms?: ProgramPreset[];
+  onCreateCustomProgram?: () => void;
   memorySizeLabel?: string;
   onOpenSettings: () => void;
   onOpenCheatsheet: () => void;
   onOpenPsiInspector?: () => void;
-  onSaveAsmFile?: () => void;
   psiParseTimeUs?: number;
   psiWarningCount?: number;
   isNativeTauri?: boolean;
@@ -63,11 +65,12 @@ export const Navbar: React.FC<NavbarProps> = ({
   onClockSpeedChange,
   selectedPresetId,
   onSelectPreset,
+  userPrograms = [],
+  onCreateCustomProgram,
   memorySizeLabel = '64 KB RAM',
   onOpenSettings,
   onOpenCheatsheet,
   onOpenPsiInspector,
-  onSaveAsmFile,
   psiParseTimeUs,
   psiWarningCount = 0,
   isNativeTauri = false,
@@ -113,6 +116,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const themeTitle = `Theme: ${themeLabel} — Tap to switch`;
 
+  const selectedCustom = userPrograms.find((p) => p.id === selectedPresetId);
+  const selectedBuiltIn = PRESETS.find((p) => p.id === selectedPresetId);
+  const selectedDisplayLabel = selectedCustom
+    ? `★ ${selectedCustom.name}`
+    : selectedBuiltIn
+    ? getShortProgramName(selectedBuiltIn.name)
+    : 'Select Program';
+
   return (
     <header className="flex flex-col lg:flex-row lg:flex-nowrap lg:items-center lg:justify-between px-3 sm:px-4 py-2 bg-[#0d121d] border-b border-slate-800 text-slate-100 select-none gap-2 lg:gap-3 pt-safe shrink-0">
       {/* Top Row on Mobile / Left Section on Desktop: Brand + Mobile Quick Actions */}
@@ -140,15 +151,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>{memorySizeLabel}</span>
             </button>
 
-            {/* Native Rust Core & PSI Inspector Badge (Inline on >= sm, in 3-dots menu on xs) */}
+            {/* Code Analyzer & Benchmark Badge (Inline on >= sm, in 3-dots menu on xs) */}
             {onOpenPsiInspector && (
               <button
                 onClick={onOpenPsiInspector}
-                title="Open Rust Core & IntelliJ-Style PSI Symbol / Static Inspector"
+                title="Open Code Analyzer, Symbol Table & ALU Benchmark"
                 className="hidden sm:flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-950/70 border border-orange-600/60 text-orange-300 hover:bg-orange-900/60 hover:text-white transition-all text-[10px] font-mono font-bold cursor-pointer whitespace-nowrap"
               >
                 <Sparkles className="w-3 h-3 text-orange-400 shrink-0" />
-                <span>{isNativeTauri ? 'Rust' : 'PSI'}</span>
+                <span>{isNativeTauri ? 'Rust' : 'Analyzer'}</span>
                 {psiParseTimeUs !== undefined && (
                   <span className="text-emerald-400 hidden md:inline">({psiParseTimeUs}µs)</span>
                 )}
@@ -164,19 +175,51 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Mobile/Tablet Right Controls: Preset Selector + 3-Dots Context Menu (Shown on < lg) */}
         <div className="flex lg:hidden items-center justify-end gap-1.5 min-w-0 flex-1">
-          <select
-            value={selectedPresetId}
-            onChange={(e) => onSelectPreset(e.target.value)}
-            disabled={isRunning}
-            aria-label="Select Sample Program Preset"
-            className="min-w-0 flex-1 max-w-[175px] sm:max-w-[240px] text-[11px] bg-slate-900 border border-slate-700/80 rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 transition-colors disabled:opacity-50 truncate"
-          >
-            {PRESETS.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          <div className="relative min-w-0 flex-1 max-w-[175px] sm:max-w-[240px]">
+            <div
+              className={`flex items-center justify-between gap-1.5 text-[11px] bg-slate-900 border border-slate-700/80 rounded-lg px-2 py-1.5 text-slate-200 transition-colors ${
+                isRunning ? 'opacity-50' : ''
+              }`}
+            >
+              <span className="truncate">{selectedDisplayLabel}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            </div>
+            <select
+              value={selectedPresetId}
+              onChange={(e) => {
+                if (e.target.value === '__new_custom__') {
+                  onCreateCustomProgram?.();
+                } else {
+                  onSelectPreset(e.target.value);
+                }
+              }}
+              disabled={isRunning}
+              aria-label="Select Sample Program Preset"
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed text-[11px] bg-slate-900 text-slate-200"
+            >
+              {userPrograms.length > 0 && (
+                <optgroup label="My Saved Programs (Local)">
+                  {userPrograms.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      ★ {p.name} - Custom
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              <optgroup label="Built-in Samples">
+                {PRESETS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+              {onCreateCustomProgram && (
+                <optgroup label="Custom Code">
+                  <option value="__new_custom__">+ Create New Custom Program...</option>
+                </optgroup>
+              )}
+            </select>
+          </div>
 
           {/* 3-Dots Context Menu on Mobile */}
           <div className="relative shrink-0" ref={mobileMenuRef}>
@@ -198,17 +241,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             {isMobileMenuOpen && (
               <div className="absolute right-0 top-full mt-1.5 w-60 rounded-xl bg-[#0d121d] border border-slate-700/90 shadow-2xl py-1.5 z-50 divide-y divide-slate-800/80">
                 <div className="py-1">
-                  {onSaveAsmFile && (
+                  {onCreateCustomProgram && (
                     <button
                       type="button"
                       onClick={() => {
                         setIsMobileMenuOpen(false);
-                        onSaveAsmFile();
+                        onCreateCustomProgram();
                       }}
-                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-slate-200 hover:bg-slate-800/80 active:bg-slate-800 transition-colors text-left"
+                      className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-emerald-300 hover:bg-slate-800/80 active:bg-slate-800 transition-colors text-left font-medium"
                     >
-                      <Download className="w-4 h-4 text-sky-400 shrink-0" />
-                      <span>Save .ASM File</span>
+                      <Plus className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span>New Custom Program</span>
                     </button>
                   )}
 
@@ -223,7 +266,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       <span className="flex items-center gap-2.5">
                         <Sparkles className="w-4 h-4 text-orange-400 shrink-0" />
-                        <span>{isNativeTauri ? 'Rust Core & PSI' : 'PSI Static Inspector'}</span>
+                        <span>Code Analyzer &amp; Benchmark</span>
                       </span>
                       <span className="flex items-center gap-1 text-[10px] font-mono">
                         {psiParseTimeUs !== undefined && (
@@ -295,33 +338,67 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
       </div>
 
-      {/* Desktop Center Section: Preset Selector & Save .ASM (Shown on >= lg) */}
+      {/* Desktop Center Section: Preset Selector, + New Custom Program & Save .ASM (Shown on >= lg) */}
       <div className="hidden lg:flex items-center gap-1.5 min-w-0 shrink">
         <span className="text-xs text-slate-400 font-medium hidden 2xl:inline shrink-0">
-          Preset:
+          Program:
         </span>
-        <select
-          value={selectedPresetId}
-          onChange={(e) => onSelectPreset(e.target.value)}
-          disabled={isRunning}
-          className="max-w-[190px] xl:max-w-[230px] 2xl:max-w-[260px] text-xs bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-sky-500 transition-colors disabled:opacity-50 cursor-pointer truncate"
-        >
-          {PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        <div className="relative min-w-0 max-w-[190px] xl:max-w-[230px] 2xl:max-w-[260px]">
+          <div
+            className={`flex items-center justify-between gap-2 text-xs bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-slate-200 transition-colors ${
+              isRunning ? 'opacity-50' : ''
+            }`}
+          >
+            <span className="truncate">{selectedDisplayLabel}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          </div>
+          <select
+            value={selectedPresetId}
+            onChange={(e) => {
+              if (e.target.value === '__new_custom__') {
+                onCreateCustomProgram?.();
+              } else {
+                onSelectPreset(e.target.value);
+              }
+            }}
+            disabled={isRunning}
+            aria-label="Select Sample Program Preset"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed text-xs bg-slate-900 text-slate-200"
+          >
+            {userPrograms.length > 0 && (
+              <optgroup label="My Saved Programs (Local)">
+                {userPrograms.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    ★ {p.name} - Custom
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label="Built-in Samples">
+              {PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+            {onCreateCustomProgram && (
+              <optgroup label="Custom Code">
+                <option value="__new_custom__">+ Create New Custom Program...</option>
+              </optgroup>
+            )}
+          </select>
+        </div>
 
-        {onSaveAsmFile && (
+        {onCreateCustomProgram && (
           <button
             type="button"
-            onClick={onSaveAsmFile}
-            title="Save current x86 Assembly source (.asm)"
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 text-slate-300 hover:text-sky-300 hover:border-sky-500/60 transition-colors text-xs font-medium cursor-pointer shrink-0 whitespace-nowrap"
+            onClick={onCreateCustomProgram}
+            disabled={isRunning}
+            title="Create a new custom assembly program (persisted locally)"
+            className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-700/80 text-emerald-300 hover:text-emerald-200 hover:border-emerald-500/60 transition-colors text-xs font-medium cursor-pointer shrink-0 whitespace-nowrap disabled:opacity-50"
           >
-            <Download className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span className="hidden xl:inline">Save .ASM</span>
+            <Plus className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span className="hidden xl:inline">New</span>
           </button>
         )}
       </div>

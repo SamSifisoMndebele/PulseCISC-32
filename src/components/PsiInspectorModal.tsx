@@ -52,20 +52,16 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-xs sm:text-sm font-bold tracking-wide text-white font-mono truncate">
-                  Rust Core &amp; PSI Inspector
+                  Code Analyzer &amp; Performance Benchmark
                 </h2>
                 <span
-                  className={`text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border ${
-                    engineInfo?.isNativeTauri
-                      ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/60'
-                      : 'bg-sky-950/80 text-sky-300 border-sky-700/60'
-                  }`}
+                  className="text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border bg-emerald-950/80 text-emerald-300 border-emerald-700/60"
                 >
-                  {engineInfo?.isNativeTauri ? 'NATIVE RUST TAURI v2' : 'HYBRID ENGINE READY'}
+                  TURBO ENGINE READY
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 truncate">
-                Program Structure Interface (PSI) AST Symbol Indexer • Static Hazard Analyzer • Native 32-Bit ALU Stress Runner
+                Symbol Indexer • Static Hazard &amp; Safety Checks • 32-Bit ALU Stress Benchmark
               </p>
             </div>
           </div>
@@ -84,17 +80,17 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                PSI Parse Time
+                Analysis Time
               </div>
               <div className="text-lg font-bold font-mono text-emerald-400 mt-0.5">
                 {psiReport ? `${psiReport.parse_time_us} µs` : '—'}
               </div>
-              <div className="text-[10px] text-slate-500">Sub-millisecond AST index</div>
+              <div className="text-[10px] text-slate-500">Sub-millisecond code scan</div>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                Indexed Symbols
+                Program Symbols
               </div>
               <div className="text-lg font-bold font-mono text-sky-400 mt-0.5">
                 {psiReport ? psiReport.symbols.length : 0}
@@ -106,17 +102,17 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
 
             <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                Static Inspections
+                Code Inspections
               </div>
               <div className="text-lg font-bold font-mono text-amber-400 mt-0.5">
                 {psiReport ? psiReport.diagnostics.length : 0}
               </div>
-              <div className="text-[10px] text-slate-500">Control-flow &amp; hazard checks</div>
+              <div className="text-[10px] text-slate-500">Control-flow &amp; safety checks</div>
             </div>
 
             <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                Host Architecture
+                Host System
               </div>
               <div className="text-sm font-bold font-mono text-purple-300 mt-1 truncate">
                 {engineInfo ? `${engineInfo.os}/${engineInfo.arch} (${engineInfo.threads}T)` : 'x86_64'}
@@ -125,16 +121,16 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
             </div>
           </div>
 
-          {/* Native Rust Turbo ALU Stress Benchmark */}
+          {/* 32-Bit ALU Turbo Stress Benchmark */}
           <div className="p-4 rounded-xl bg-gradient-to-r from-orange-950/30 via-slate-900/90 to-sky-950/30 border border-orange-500/30">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2 text-xs font-bold text-orange-300 font-mono">
                   <Gauge className="w-4 h-4 text-orange-400" />
-                  <span>NATIVE RUST 32-BIT ALU TURBO BENCHMARK</span>
+                  <span>32-BIT ALU TURBO SPEED BENCHMARK</span>
                 </div>
                 <p className="text-[11px] text-slate-400 mt-0.5">
-                  Executes millions of 32-bit register ALU operations (`ADD`, `XOR`, `ROL`, `SUB`, `IMUL`) on the Rust Core and syncs results back to registers.
+                  Executes millions of 32-bit register ALU operations (`ADD`, `XOR`, `ROL`, `SUB`, `IMUL`) at maximum speed and syncs results back to CPU registers.
                 </p>
               </div>
 
@@ -155,7 +151,7 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
                   className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-orange-600/20"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>{isBenchmarking ? 'Running...' : 'Run Native Turbo'}</span>
+                  <span>{isBenchmarking ? 'Running...' : 'Run Benchmark'}</span>
                 </button>
               </div>
             </div>
@@ -186,11 +182,11 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
 
           {/* Two-Column PSI Details: Symbol Table & Register Heatmap */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* PSI Symbol Table */}
+            {/* Symbol Table */}
             <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-sky-400 font-mono mb-2.5">
                 <Tag className="w-3.5 h-3.5" />
-                <span>PSI Symbol Index (Labels, Data &amp; Constants)</span>
+                <span>Symbol Index (Labels, Data &amp; Constants)</span>
               </div>
               {psiReport && psiReport.symbols.length > 0 ? (
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 font-mono text-xs">
@@ -251,7 +247,7 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
             <div className="flex items-center justify-between mb-2.5">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 font-mono">
                 <AlertTriangle className="w-3.5 h-3.5" />
-                <span>IntelliJ-Style Static Code Inspections</span>
+                <span>Static Code Inspections &amp; Hazard Checks</span>
               </div>
               <span className="text-[11px] text-slate-500 font-mono">
                 Dead code • EDX/DIV safety • Unused labels • Stack balance

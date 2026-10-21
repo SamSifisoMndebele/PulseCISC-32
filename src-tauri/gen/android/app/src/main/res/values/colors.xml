@@ -7,4 +7,14 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- PulseCISC-32 Dark Theme System Bar Colors -->
+    <color name="dark_window_background">#FF070A10</color>
+    <color name="dark_status_bar">#FF0D121D</color>
+    <color name="dark_nav_bar">#FF0B101B</color>
+
+    <!-- PulseCISC-32 Light Theme System Bar Colors -->
+    <color name="light_window_background">#FFF8FAFC</color>
+    <color name="light_status_bar">#FFFFFFFF</color>
+    <color name="light_nav_bar">#FFFFFFFF</color>
 </resources>

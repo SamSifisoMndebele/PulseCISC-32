@@ -1,5 +1,5 @@
 // PulseCISC-32 Main Application (Responsive Mobile, Tablet & Desktop Studio with Rust Core & PSI)
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { CPU } from './core/cpu';
 import { Memory } from './core/memory';
 import { Assembler } from './core/assembler';
@@ -21,11 +21,19 @@ import { RegisterFileView } from './components/RegisterFileView';
 import { SpecialRegistersView } from './components/SpecialRegistersView';
 import { MemoryGridView } from './components/MemoryGridView';
 import { TraceLogView } from './components/TraceLogView';
-import { CheatsheetModal } from './components/CheatsheetModal';
-import { SettingsModal } from './components/SettingsModal';
 import { ScreenSizeGuard } from './components/ScreenSizeGuard';
-import { PsiInspectorModal } from './components/PsiInspectorModal';
 import { setVisualizerTheme } from './visualizer/theme';
+
+// Lazy-load heavyweight modals that are not needed during startup
+const CheatsheetModal = lazy(() =>
+  import('./components/CheatsheetModal').then((m) => ({ default: m.CheatsheetModal }))
+);
+const SettingsModal = lazy(() =>
+  import('./components/SettingsModal').then((m) => ({ default: m.SettingsModal }))
+);
+const PsiInspectorModal = lazy(() =>
+  import('./components/PsiInspectorModal').then((m) => ({ default: m.PsiInspectorModal }))
+);
 import {
   getRustEngineInfo,
   analyzeAssemblyPsi,
@@ -102,18 +110,29 @@ export function App() {
     }
 
     // Synchronize native Android top status bar & bottom navigation bar
-    try {
-      const bridge = (
-        window as unknown as {
-          AndroidBridge?: { setSystemBarsTheme?: (isDark: boolean) => void };
+    const syncNativeBars = () => {
+      try {
+        const bridge = (
+          window as unknown as {
+            AndroidBridge?: { setSystemBarsTheme?: (isDark: boolean) => void };
+          }
+        ).AndroidBridge;
+        if (bridge?.setSystemBarsTheme) {
+          bridge.setSystemBarsTheme(!isLight);
         }
-      ).AndroidBridge;
-      if (bridge?.setSystemBarsTheme) {
-        bridge.setSystemBarsTheme(!isLight);
+      } catch {
+        // Ignore if not running in Android native WebView
       }
-    } catch {
-      // Ignore if not running in Android native WebView
-    }
+    };
+
+    syncNativeBars();
+    const t1 = setTimeout(syncNativeBars, 100);
+    const t2 = setTimeout(syncNativeBars, 500);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [resolvedTheme, themePref]);
 
   const handleCycleTheme = useCallback(() => {
@@ -137,42 +156,29 @@ export function App() {
   }
   const cpu = cpuRef.current;
 
-  // User Custom Programs & Persisted Session State
-  const [userPrograms, setUserPrograms] = useState<ProgramPreset[]>(() => loadUserPrograms());
-
-  const [initialProgramState] = useState<{ presetId: string; code: string }>(() => {
+  // Initial Program & Session Bootstrap (computed once on initial startup for maximum speed)
+  const [initialData] = useState(() => {
     const savedUserProgs = loadUserPrograms();
     const session = loadActiveSession();
+    let presetId = PRESETS[0].id;
+    let initialCode = PRESETS[0].code;
+
     if (session) {
       const existsInCustom = savedUserProgs.some((p) => p.id === session.selectedPresetId);
       const existsInBuiltIn = PRESETS.some((p) => p.id === session.selectedPresetId);
       if (existsInCustom || existsInBuiltIn) {
-        return { presetId: session.selectedPresetId, code: session.code };
+        presetId = session.selectedPresetId;
+        initialCode = session.code;
       }
     }
-    return { presetId: PRESETS[0].id, code: PRESETS[0].code };
-  });
 
-  // Preset & Editor State
-  const [selectedPresetId, setSelectedPresetId] = useState<string>(initialProgramState.presetId);
-  const [code, setCode] = useState<string>(initialProgramState.code);
-  const [assembled, setAssembled] = useState<AssembledProgram>(() =>
-    Assembler.assemble(initialProgramState.code, {
-      codeStart: systemConfig.codeStart,
-      codeEnd: Math.max(0, systemConfig.dataStart - 1),
-      dataStart: systemConfig.dataStart,
-      dataEnd: systemConfig.memorySize - 1,
-    })
-  );
-
-  // CPU Snapshot State
-  const [cpuState, setCpuState] = useState<CPUMicroState>(() => {
-    const initAsm = Assembler.assemble(initialProgramState.code, {
+    const initAsm = Assembler.assemble(initialCode, {
       codeStart: systemConfig.codeStart,
       codeEnd: Math.max(0, systemConfig.dataStart - 1),
       dataStart: systemConfig.dataStart,
       dataEnd: systemConfig.memorySize - 1,
     });
+
     if (initAsm.errors.length === 0) {
       cpu.reset(initAsm.entryPoint);
       cpu.memory.loadCode(initAsm.codeBytes);
@@ -180,8 +186,22 @@ export function App() {
         cpu.memory.loadData(initAsm.dataBytes);
       }
     }
-    return cpu.getSnapshot();
+
+    return {
+      userPrograms: savedUserProgs,
+      presetId,
+      code: initialCode,
+      assembled: initAsm,
+      cpuSnapshot: cpu.getSnapshot(),
+    };
   });
+
+  // User Custom Programs & Persisted Session State
+  const [userPrograms, setUserPrograms] = useState<ProgramPreset[]>(initialData.userPrograms);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(initialData.presetId);
+  const [code, setCode] = useState<string>(initialData.code);
+  const [assembled, setAssembled] = useState<AssembledProgram>(initialData.assembled);
+  const [cpuState, setCpuState] = useState<CPUMicroState>(initialData.cpuSnapshot);
 
   // Active Program Metadata (Custom or Built-in)
   const currentProgram: ProgramPreset | undefined =
@@ -246,6 +266,25 @@ export function App() {
       cancelled = true;
     };
   }, [code]);
+
+  // Notify native Android SplashScreen that initial frame has rendered
+  useEffect(() => {
+    const rafId = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        try {
+          const bridge = (
+            window as unknown as {
+              AndroidBridge?: { markAppReady?: () => void };
+            }
+          ).AndroidBridge;
+          bridge?.markAppReady?.();
+        } catch {
+          // Ignore outside Android
+        }
+      });
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, []);
 
   const handleRunNativeBenchmark = useCallback(
     async (iterations: number) => {
@@ -1316,30 +1355,42 @@ export function App() {
           />
         </div>
 
-        {/* Cheatsheet Reference Modal */}
-        <CheatsheetModal
-          isOpen={isCheatsheetOpen}
-          onClose={() => setIsCheatsheetOpen(false)}
-        />
+        {/* Cheatsheet Reference Modal (lazy loaded) */}
+        {isCheatsheetOpen && (
+          <Suspense fallback={null}>
+            <CheatsheetModal
+              isOpen={isCheatsheetOpen}
+              onClose={() => setIsCheatsheetOpen(false)}
+            />
+          </Suspense>
+        )}
 
-        {/* System Architecture Settings Modal */}
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          config={systemConfig}
-          onSaveConfig={handleApplyConfig}
-        />
+        {/* System Architecture Settings Modal (lazy loaded) */}
+        {isSettingsOpen && (
+          <Suspense fallback={null}>
+            <SettingsModal
+              isOpen={isSettingsOpen}
+              onClose={() => setIsSettingsOpen(false)}
+              config={systemConfig}
+              onSaveConfig={handleApplyConfig}
+            />
+          </Suspense>
+        )}
 
-        {/* Rust Core & IntelliJ-Style PSI Inspector Modal */}
-        <PsiInspectorModal
-          isOpen={isPsiInspectorOpen}
-          onClose={() => setIsPsiInspectorOpen(false)}
-          engineInfo={engineInfo}
-          psiReport={psiReport}
-          onRunBenchmark={handleRunNativeBenchmark}
-          lastBenchmark={lastBenchmark}
-          isBenchmarking={isBenchmarking}
-        />
+        {/* Rust Core & IntelliJ-Style PSI Inspector Modal (lazy loaded) */}
+        {isPsiInspectorOpen && (
+          <Suspense fallback={null}>
+            <PsiInspectorModal
+              isOpen={isPsiInspectorOpen}
+              onClose={() => setIsPsiInspectorOpen(false)}
+              engineInfo={engineInfo}
+              psiReport={psiReport}
+              onRunBenchmark={handleRunNativeBenchmark}
+              lastBenchmark={lastBenchmark}
+              isBenchmarking={isBenchmarking}
+            />
+          </Suspense>
+        )}
       </div>
     </ScreenSizeGuard>
   );

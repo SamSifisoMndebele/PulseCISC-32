@@ -44,23 +44,23 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-2 sm:p-4">
       <div className="w-full max-w-4xl max-h-[92dvh] sm:max-h-[88vh] flex flex-col rounded-2xl bg-[#0b101b] border border-slate-700/80 shadow-2xl overflow-hidden text-slate-100">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 sm:px-5 py-3 sm:py-3.5 bg-slate-900/90 border-b border-slate-800">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center justify-between px-3.5 sm:px-5 py-3 sm:py-3.5 bg-slate-900/90 border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
             <div className="p-2 rounded-lg bg-orange-500/15 border border-orange-500/40 text-orange-400 shrink-0">
               <Sparkles className="w-4 h-4" />
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xs sm:text-sm font-bold tracking-wide text-white font-mono truncate">
+                <h2 className="text-xs sm:text-sm font-bold tracking-wide text-white font-mono break-words">
                   Code Analyzer &amp; Performance Benchmark
                 </h2>
                 <span
-                  className="text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border bg-emerald-950/80 text-emerald-300 border-emerald-700/60"
+                  className="text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold border bg-emerald-950/80 text-emerald-300 border-emerald-700/60 shrink-0"
                 >
                   TURBO ENGINE READY
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 truncate">
+              <p className="text-[10px] sm:text-[11px] text-slate-400 truncate mt-0.5">
                 Symbol Indexer • Static Hazard &amp; Safety Checks • 32-Bit ALU Stress Benchmark
               </p>
             </div>
@@ -69,6 +69,7 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+            aria-label="Close modal"
           >
             <X className="w-4 h-4" />
           </button>
@@ -77,68 +78,71 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 space-y-4 sm:space-y-5">
           {/* Top Stats Strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-slate-900/70 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
                 Analysis Time
               </div>
-              <div className="text-lg font-bold font-mono text-emerald-400 mt-0.5">
+              <div className="text-base sm:text-lg font-bold font-mono text-emerald-400 mt-0.5">
                 {psiReport ? `${psiReport.parse_time_us} µs` : '—'}
               </div>
-              <div className="text-[10px] text-slate-500">Sub-millisecond code scan</div>
+              <div className="text-[10px] text-slate-500 truncate">Sub-millisecond code scan</div>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-slate-900/70 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
                 Program Symbols
               </div>
-              <div className="text-lg font-bold font-mono text-sky-400 mt-0.5">
+              <div className="text-base sm:text-lg font-bold font-mono text-sky-400 mt-0.5">
                 {psiReport ? psiReport.symbols.length : 0}
               </div>
-              <div className="text-[10px] text-slate-500">
+              <div className="text-[10px] text-slate-500 truncate">
                 {psiReport ? `${psiReport.instruction_count} instructions` : 'Labels & Data'}
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-slate-900/70 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
                 Code Inspections
               </div>
-              <div className="text-lg font-bold font-mono text-amber-400 mt-0.5">
+              <div className="text-base sm:text-lg font-bold font-mono text-amber-400 mt-0.5">
                 {psiReport ? psiReport.diagnostics.length : 0}
               </div>
-              <div className="text-[10px] text-slate-500">Control-flow &amp; safety checks</div>
+              <div className="text-[10px] text-slate-500 truncate">Control-flow &amp; safety checks</div>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800">
+            <div className="p-2.5 sm:p-3 rounded-xl bg-slate-900/70 border border-slate-800">
               <div className="text-[10px] uppercase tracking-wider text-slate-400">
                 Host System
               </div>
-              <div className="text-sm font-bold font-mono text-purple-300 mt-1 truncate">
+              <div
+                className="text-xs sm:text-sm font-bold font-mono text-purple-300 mt-1 truncate"
+                title={engineInfo ? `${engineInfo.os}/${engineInfo.arch} (${engineInfo.threads}T)` : 'x86_64'}
+              >
                 {engineInfo ? `${engineInfo.os}/${engineInfo.arch} (${engineInfo.threads}T)` : 'x86_64'}
               </div>
-              <div className="text-[10px] text-slate-500">Hardware threads available</div>
+              <div className="text-[10px] text-slate-500 truncate">Hardware threads available</div>
             </div>
           </div>
 
           {/* 32-Bit ALU Turbo Stress Benchmark */}
-          <div className="p-4 rounded-xl bg-gradient-to-r from-orange-950/30 via-slate-900/90 to-sky-950/30 border border-orange-500/30">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
+          <div className="p-3.5 sm:p-4 rounded-xl bg-gradient-to-r from-orange-950/30 via-slate-900/90 to-sky-950/30 border border-orange-500/30">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 text-xs font-bold text-orange-300 font-mono">
-                  <Gauge className="w-4 h-4 text-orange-400" />
+                  <Gauge className="w-4 h-4 text-orange-400 shrink-0" />
                   <span>32-BIT ALU TURBO SPEED BENCHMARK</span>
                 </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
                   Executes millions of 32-bit register ALU operations (`ADD`, `XOR`, `ROL`, `SUB`, `IMUL`) at maximum speed and syncs results back to CPU registers.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
                 <select
                   value={iterations}
                   onChange={(e) => setIterations(Number(e.target.value))}
-                  className="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200"
+                  className="w-full sm:w-auto bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 sm:py-1.5 text-xs font-mono text-slate-200 outline-none focus:border-orange-500 cursor-pointer"
                 >
                   <option value={1_000_000}>4M Instructions (1M loops)</option>
                   <option value={5_000_000}>20M Instructions (5M loops)</option>
@@ -146,11 +150,12 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
                 </select>
 
                 <button
+                  type="button"
                   onClick={() => onRunBenchmark(iterations)}
                   disabled={isBenchmarking}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-orange-600/20"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 sm:py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-orange-600/20 whitespace-nowrap shrink-0"
                 >
-                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <Play className="w-3.5 h-3.5 fill-current shrink-0" />
                   <span>{isBenchmarking ? 'Running...' : 'Run Benchmark'}</span>
                 </button>
               </div>
@@ -158,19 +163,19 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
 
             {lastBenchmark && (
               <div className="mt-3 pt-3 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 text-xs font-mono">
-                <div>
-                  <span className="text-slate-400">Instructions Executed: </span>
+                <div className="flex sm:flex-col justify-between sm:justify-start">
+                  <span className="text-slate-400">Instructions: </span>
                   <span className="text-white font-bold">
                     {lastBenchmark.instructions_executed.toLocaleString()}
                   </span>
                 </div>
-                <div>
+                <div className="flex sm:flex-col justify-between sm:justify-start">
                   <span className="text-slate-400">Elapsed Time: </span>
                   <span className="text-emerald-400 font-bold">
                     {(lastBenchmark.elapsed_us / 1000).toFixed(2)} ms ({lastBenchmark.elapsed_us} µs)
                   </span>
                 </div>
-                <div>
+                <div className="flex sm:flex-col justify-between sm:justify-start">
                   <span className="text-slate-400">Throughput: </span>
                   <span className="text-orange-400 font-bold">
                     {lastBenchmark.effective_mips.toFixed(1)} MIPS (MHz)
@@ -243,14 +248,14 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
           </div>
 
           {/* Static Hazard & Inspection Diagnostics */}
-          <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
-            <div className="flex items-center justify-between mb-2.5">
+          <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-3 sm:p-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-2.5">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400 font-mono">
-                <AlertTriangle className="w-3.5 h-3.5" />
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 <span>Static Code Inspections &amp; Hazard Checks</span>
               </div>
-              <span className="text-[11px] text-slate-500 font-mono">
-                Dead code • EDX/DIV safety • Unused labels • Stack balance
+              <span className="text-[10px] sm:text-[11px] text-slate-500 font-mono">
+                Dead code • EDX/DIV safety • Unused labels
               </span>
             </div>
 
@@ -261,9 +266,9 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
                     key={i}
                     className="flex items-start justify-between gap-2 px-3 py-2 rounded-lg bg-slate-950/80 border border-slate-800"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-start gap-2 min-w-0">
                       <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold ${
+                        className={`text-[10px] px-1.5 py-0.5 rounded uppercase font-bold shrink-0 mt-0.5 ${
                           d.severity === 'warning'
                             ? 'bg-amber-950 text-amber-300 border border-amber-700/60'
                             : 'bg-sky-950 text-sky-300 border border-sky-700/60'
@@ -271,15 +276,15 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
                       >
                         {d.code}
                       </span>
-                      <span className="text-slate-200">{d.message}</span>
+                      <span className="text-slate-200 text-xs break-words">{d.message}</span>
                     </div>
-                    <span className="text-slate-400 whitespace-nowrap">Line {d.line}</span>
+                    <span className="text-slate-400 whitespace-nowrap text-[11px] shrink-0">Line {d.line}</span>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-950/30 border border-emerald-800/50 rounded-lg px-3 py-2 font-mono">
-                <CheckCircle2 className="w-4 h-4" />
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>No static control-flow or register hazards detected in assembly source.</span>
               </div>
             )}
@@ -287,14 +292,14 @@ export const PsiInspectorModal: React.FC<PsiInspectorModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-3 bg-slate-950 border-t border-slate-800 text-xs text-slate-400">
-          <div className="flex items-center gap-2 font-mono">
-            <Cpu className="w-3.5 h-3.5 text-orange-400" />
-            <span>Engine: {engineInfo?.backend}</span>
+        <div className="flex items-center justify-between px-4 sm:px-5 py-2.5 sm:py-3 bg-slate-950 border-t border-slate-800 text-xs text-slate-400 shrink-0">
+          <div className="flex items-center gap-2 font-mono min-w-0 mr-2">
+            <Cpu className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+            <span className="truncate">Engine: {engineInfo?.backend || 'PulseCISC-32 High-Speed Execution Core'}</span>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium transition-colors"
+            className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 font-medium transition-colors shrink-0 cursor-pointer"
           >
             Close
           </button>

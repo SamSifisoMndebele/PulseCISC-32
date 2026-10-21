@@ -496,7 +496,7 @@ export const TraceLogView: React.FC<TraceLogViewProps> = ({
             <div className="flex items-center justify-between px-3 py-1.5 bg-slate-950/70 border-b border-slate-800/80 text-[11px] select-none">
               <div className="flex items-center gap-1.5 text-emerald-300 font-semibold">
                 <Monitor className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Console Output (PRINT / MMIO)</span>
+                <span>Console Output (Irvine32 / Syscalls / MMIO)</span>
               </div>
               <div className="flex items-center gap-1.5">
                 {consoleOutput.length > 0 && (
@@ -539,7 +539,7 @@ export const TraceLogView: React.FC<TraceLogViewProps> = ({
             >
               {consoleOutput.length === 0 ? (
                 <div className="text-slate-600 p-4 text-center select-none">
-                  Console is empty. Use <code className="text-emerald-400 select-text">PRINT EAX</code> in assembly to print results!
+                  Console is empty. Use <code className="text-emerald-400 select-text">CALL WriteString</code> or <code className="text-emerald-400 select-text">CALL WriteInt</code> in assembly to print results!
                 </div>
               ) : (
                 consoleOutput.map((entry) => {

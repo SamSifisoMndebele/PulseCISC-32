@@ -577,6 +577,42 @@ export class MASMPreprocessor {
         continue;
       }
 
+      // 7. Built-in Irvine32 "exit" macro
+      if (/^exit$/i.test(line)) {
+        emitLine(`MOV EBX, 0`, originLine);
+        emitLine(`MOV EAX, 1`, originLine);
+        emitLine(`INT 0x80`, originLine);
+        continue;
+      }
+
+      // 8. Lower legacy PRINT pseudo-instruction to Irvine32 WriteString / WriteInt
+      const printMatch = line.match(/^PRINT\s+(.+)$/i);
+      if (printMatch) {
+        const arg = printMatch[1].trim();
+        if (dataSymbols.has(arg.toLowerCase())) {
+          emitLine(`MOV EDX, OFFSET ${arg}`, originLine);
+          emitLine(`CALL WriteString`, originLine);
+          emitLine(`CALL Crlf`, originLine);
+        } else if (/^EAX$/i.test(arg)) {
+          emitLine(`CALL WriteInt`, originLine);
+          emitLine(`CALL Crlf`, originLine);
+        } else if (/^(EBX|ECX|EDX|ESI|EDI|EBP|ESP)$/i.test(arg)) {
+          emitLine(`PUSH EAX`, originLine);
+          emitLine(`MOV EAX, ${arg}`, originLine);
+          emitLine(`CALL WriteInt`, originLine);
+          emitLine(`CALL Crlf`, originLine);
+          emitLine(`POP EAX`, originLine);
+        } else {
+          // Immediate or memory operand
+          emitLine(`PUSH EAX`, originLine);
+          emitLine(`MOV EAX, ${arg}`, originLine);
+          emitLine(`CALL WriteInt`, originLine);
+          emitLine(`CALL Crlf`, originLine);
+          emitLine(`POP EAX`, originLine);
+        }
+        continue;
+      }
+
       emitLine(line, originLine);
     }
 

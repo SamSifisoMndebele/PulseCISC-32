@@ -13,18 +13,34 @@ function assert(condition: boolean, msg: string) {
 console.log('--- Testing PulseCISC-32 2-Operand Assembler & CPU Engine ---');
 
 const testProgram = `
-; PulseCISC-32 Core Test
-MOV EAX, 10
-MOV EBX, 25
-ADD EAX, EBX       ; EAX = 35
-SUB EBX, 10        ; EBX = 15
-XOR ECX, ECX       ; ECX = 0 (ZF should be 1)
-MOV EDX, 0x2000    ; memory address pointer
-MOV [EDX], EAX     ; Store 35 at RAM[0x2000]
-MOV ESI, [EDX]     ; Load 35 into ESI
-PRINT EAX          ; Print EAX result to console
-PRINT 100          ; Print immediate to console
-HLT
+; PulseCISC-32 Core Test with Irvine32 HLE
+INCLUDE Irvine32.inc
+
+.data
+  msgResult BYTE "Result: ", 0, 0, 0, 0
+  tempVal   DWORD 0
+
+.code
+main:
+  MOV EAX, 10
+  MOV EBX, 25
+  ADD EAX, EBX       ; EAX = 35
+  SUB EBX, 10        ; EBX = 15
+  XOR ECX, ECX       ; ECX = 0 (ZF should be 1)
+  MOV EDX, OFFSET tempVal ; memory address pointer
+  MOV [EDX], EAX     ; Store 35 at tempVal
+  MOV ESI, [EDX]     ; Load 35 into ESI
+  MOV EDX, OFFSET msgResult
+  CALL WriteString   ; Print "Result: "
+  CALL WriteInt      ; Print +35
+  CALL Crlf
+  PUSH EAX
+  MOV EAX, 100
+  CALL WriteInt      ; Print +100
+  CALL Crlf
+  POP EAX
+  CALL DumpRegs      ; Dump registers
+  HLT
 `;
 
 const assembled = Assembler.assemble(testProgram);
@@ -36,8 +52,11 @@ console.log(`✓ Assembled ${assembled.codeBytes.length} bytes successfully.`);
 
 const cpu = new CPU();
 cpu.memory.loadCode(assembled.codeBytes);
+if (assembled.dataBytes && assembled.dataBytes.length > 0) {
+  cpu.memory.loadData(assembled.dataBytes, 0x2000);
+}
 
-let maxSteps = 200;
+let maxSteps = 300;
 while (!cpu.halted && maxSteps > 0) {
   cpu.stepMicro();
   maxSteps--;
@@ -47,11 +66,13 @@ assert(cpu.halted, 'CPU halted cleanly on HLT');
 assert(cpu.readRegister(0) === 35, 'EAX == 35 (ADD)');
 assert(cpu.readRegister(1) === 15, 'EBX == 15 (SUB)');
 assert(cpu.readRegister(2) === 0, 'ECX == 0 (XOR ECX, ECX)');
-assert(cpu.memory.readWord(0x2000) === 35, 'Data RAM[0x2000] == 35 (MOV [EDX], EAX)');
+const tempAddr = assembled.labels?.get('tempval') ?? 0x2008;
+assert(cpu.memory.readWord(tempAddr) === 35, `Data RAM[0x${tempAddr.toString(16)}] == 35 (MOV [EDX], EAX)`);
 assert(cpu.readRegister(4) === 35, 'ESI == 35 (MOV ESI, [EDX])');
-assert(cpu.consoleOutput.length >= 3, 'Console received system reset + PRINT outputs');
-assert(cpu.consoleOutput.some(e => e.text.includes('EAX = 35')), 'Console printed EAX = 35');
-assert(cpu.consoleOutput.some(e => e.text.includes('100')), 'Console printed 100');
+assert(cpu.consoleOutput.some(e => e.text.includes('Result: ')), 'Console printed "Result: " via WriteString');
+assert(cpu.consoleOutput.some(e => e.text.includes('+35')), 'Console printed +35 via WriteInt');
+assert(cpu.consoleOutput.some(e => e.text.includes('+100')), 'Console printed +100 via WriteInt');
+assert(cpu.consoleOutput.some(e => e.text.includes('DumpRegs')), 'Console printed DumpRegs');
 
 console.log('--- Testing 16-Bit Sub-Registers (AX, BX, etc.) ---');
 const subRegProgram = `

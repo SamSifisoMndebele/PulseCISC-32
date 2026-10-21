@@ -167,7 +167,6 @@ export type Mnemonic =
   | 'BSR'
   | 'NOP'
   | 'HLT'
-  | 'PRINT'
   | 'INT'
   | 'SYSCALL';
 

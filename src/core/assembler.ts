@@ -17,6 +17,7 @@ import type { ParsedRegisterToken, InstructionToEncode } from './isa';
 import { CODE_START, CODE_END, DATA_START, DATA_END } from './memory';
 import { MASMPreprocessor } from './masmPreprocessor';
 import type { DataSymbolInfo } from './masmPreprocessor';
+import { IRVINE_ROUTINES } from './irvineHle';
 
 interface DataDirective {
   type: 'DB' | 'DW' | 'DD';
@@ -556,6 +557,10 @@ export class Assembler {
       return labels.get(clean.toLowerCase())!;
     }
 
+    if (IRVINE_ROUTINES[clean.toLowerCase()] !== undefined) {
+      return IRVINE_ROUTINES[clean.toLowerCase()];
+    }
+
     // Handle simple constant arithmetic like "label + 4" or "10 * 4"
     const arithMatch = clean.match(/^([a-zA-Z_@][a-zA-Z0-9_@]*|\d+)\s*([+\-*])\s*(\d+)$/);
     if (arithMatch) {
@@ -932,7 +937,7 @@ export class Assembler {
       };
     }
 
-    // 3. MOVH, PRINT, INT, SYSCALL
+    // 3. MOVH, INT, SYSCALL
     if (mnemonic === 'MOVH') {
       if (args.length !== 2) throw new Error(`Line ${lineNum}: MOVH requires 2 operands`);
       const destOp = this.toRegOperand(this.parseRegister(args[0], lineNum));
@@ -943,12 +948,6 @@ export class Assembler {
         dest: destOp,
         src: { type: 'IMM', imm, rawString: String(imm) },
       };
-    }
-
-    if (mnemonic === 'PRINT') {
-      if (args.length !== 1) throw new Error(`Line ${lineNum}: PRINT requires 1 operand`);
-      const op = this.parseGeneralOperand(args[0], lineNum, labels, dataSymbols, false);
-      return { opcode: OPCODES.PRINT, mnemonic: 'PRINT', dest: op, src: noneOp };
     }
 
     if (mnemonic === 'INT') {

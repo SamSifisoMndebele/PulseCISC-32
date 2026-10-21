@@ -33,7 +33,6 @@ export const OPCODES = {
   JNE: 0x12,
   JMP: 0x13,
   MOVH: 0x14,
-  PRINT: 0x15,
   SYSCALL: 0x16,
 
   // Signed Conditional Branches
@@ -770,7 +769,7 @@ const MNEMONIC_LIST: Mnemonic[] = [
   'SETL', 'SETNGE', 'SETLE', 'SETNG', 'SETA', 'SETNBE', 'SETAE', 'SETNB', 'SETNC',
   'SETB', 'SETNAE', 'SETC', 'SETBE', 'SETNA', 'SETS', 'SETNS',
   'BT', 'BTS', 'BTR', 'BTC', 'BSF', 'BSR',
-  'NOP', 'HLT', 'PRINT', 'INT', 'SYSCALL',
+  'NOP', 'HLT', 'INT', 'SYSCALL',
 ];
 
 /**

@@ -129,7 +129,7 @@ PulseCISC-32 encodes instructions into an authentic **variable-length x86 instru
 | **Bitwise, Shifts & Bit Scan** | `AND`, `OR`, `XOR`, `NOT`, `TEST`, `CMP`, `SHL`/`SAL`, `SHR`, `SAR`, `ROL`, `ROR`, `BT`, `BTS`, `BTR`, `BTC`, `BSF`, `BSR`, `SETcc` |
 | **String & Block Primitives** | `MOVSB`, `MOVSW`, `MOVSD`, `STOSB`, `STOSW`, `STOSD`, `LODSB`, `LODSW`, `LODSD`, `CMPSB`, `CMPSW`, `CMPSD`, `SCASB`, `SCASW`, `SCASD` + `REP`/`REPE`/`REPNE` |
 | **Control Flow & Loops** | `JMP`, `JE`/`JZ`, `JNE`/`JNZ`, `JL`, `JLE`, `JG`, `JGE`, `JB`/`JC`, `JBE`, `JA`, `JAE`/`JNC`, `JS`, `JNS`, `JO`, `JNO`, `JECXZ`, `LOOP`, `LOOPE`/`LOOPZ`, `LOOPNE`/`LOOPNZ` |
-| **Flags & System Control** | `CLC`, `STC`, `CMC`, `CLD`, `STD`, `LAHF`, `SAHF`, `NOP`, `HLT`, `PRINT`, `INT 0x80` / `SYSCALL` |
+| **Flags & System Control** | `CLC`, `STC`, `CMC`, `CLD`, `STD`, `LAHF`, `SAHF`, `NOP`, `HLT`, `INT 0x80` / `SYSCALL`, Irvine32 HLE (`WriteString`, `WriteInt`, `DumpRegs`, etc.) |
 
 
 ---

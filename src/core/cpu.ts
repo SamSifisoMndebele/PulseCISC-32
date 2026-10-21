@@ -28,6 +28,7 @@ import {
 import { Memory } from './memory';
 import { ALU } from './alu';
 import type { ALUOperation } from './alu';
+import { isIrvineTrap, executeIrvineHLE } from './irvineHle';
 
 export class CPU {
   public memory: Memory;
@@ -408,6 +409,11 @@ export class CPU {
   // --- Phase Handlers ---
 
   private executeFetch(): void {
+    if (isIrvineTrap(this.eip)) {
+      executeIrvineHLE(this, this.eip);
+      return;
+    }
+
     this.oldEip = this.eip;
     this.mar = this.eip;
 
@@ -1438,37 +1444,6 @@ export class CPU {
             `Branch condition not met; continued sequentially`
           );
         }
-        this.instructionCount++;
-        this.phase = 'EXECUTE';
-        this.nextPhase = 'FETCH';
-        break;
-      }
-
-      case OPCODES.PRINT: {
-        let printText = '';
-        if (dest.type === 'REG') {
-          const val = this.readRegister(dest.reg ?? 0, dest.is16Bit, dest.is8Bit, dest.is8BitHigh, dest.segReg);
-          printText = `[OUT]: ${dest.rawString} = ${toInt32(val)} (${toHex32(val)})`;
-          this.activeBuses = ['REGS_TO_LATCHES', 'REG_TO_CONSOLE'];
-        } else if (dest.type === 'MEM') {
-          const val = this.readMemoryOperandValue(dest);
-          printText = `[OUT]: ${dest.rawString} = ${toInt32(val)} (${toHex32(val)})`;
-          this.activeBuses = ['MEM_TO_MDR', 'REG_TO_CONSOLE'];
-        } else if (dest.type === 'IMM') {
-          const val = dest.imm ?? 0;
-          printText = `[OUT]: ${val} (${toHex32(val)})`;
-          this.activeBuses = ['IMM_TO_ALU', 'REG_TO_CONSOLE'];
-        }
-
-        this.consoleOutput.push({
-          id: this.nextConsoleId++,
-          cycle: this.cycles,
-          type: 'output',
-          text: printText,
-          timestamp: Date.now(),
-        });
-
-        this.addTrace('EXECUTE', `Console <- ${printText}`, 'Printed result to system console');
         this.instructionCount++;
         this.phase = 'EXECUTE';
         this.nextPhase = 'FETCH';

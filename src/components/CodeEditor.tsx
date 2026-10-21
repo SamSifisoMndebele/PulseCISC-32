@@ -22,6 +22,7 @@ interface CodeEditorProps {
   onAssemble: () => void;
   activeLineIndex: number | null; // 0-indexed line currently pointed by EIP
   errors: AssemblyError[];
+  hasUnassembledChanges?: boolean;
   onShowCheatsheet: () => void;
   currentProgram?: ProgramPreset;
   isDirtySample?: boolean;
@@ -38,6 +39,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   onAssemble,
   activeLineIndex,
   errors,
+  hasUnassembledChanges = false,
   onShowCheatsheet,
   currentProgram,
   isDirtySample = false,
@@ -99,6 +101,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   const handleScroll = () => {
     if (textareaRef.current && lineNumbersRef.current) {
       lineNumbersRef.current.scrollTop = textareaRef.current.scrollTop;
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Ctrl+Enter or Cmd+Enter: Assemble immediately
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      onAssemble();
     }
   };
 
@@ -217,10 +227,25 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           <button
             type="button"
             onClick={onAssemble}
-            className="flex items-center gap-1 px-2.5 py-1 rounded bg-sky-600 hover:bg-sky-500 text-white text-xs font-medium transition-colors shadow-sm cursor-pointer"
+            className={`flex items-center gap-1 px-2.5 py-1 rounded text-white text-xs font-medium transition-colors shadow-sm cursor-pointer ${
+              hasUnassembledChanges
+                ? 'bg-amber-600 hover:bg-amber-500 ring-1 ring-amber-400/50'
+                : 'bg-sky-600 hover:bg-sky-500'
+            }`}
+            title={
+              hasUnassembledChanges
+                ? 'Assemble source code (or press Run to auto-assemble)'
+                : 'Assemble source code (Ctrl+Enter)'
+            }
           >
             <PlayCircle className="w-3.5 h-3.5" />
             <span>Assemble</span>
+            {hasUnassembledChanges && (
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-amber-200 shrink-0"
+                title="Unassembled changes"
+              />
+            )}
           </button>
         </div>
       </div>
@@ -330,6 +355,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           ref={textareaRef}
           value={code}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           onScroll={handleScroll}
           spellCheck={false}
           className="flex-1 p-3 bg-transparent text-slate-200 resize-none focus:outline-none font-mono text-xs leading-5 whitespace-pre overflow-auto"

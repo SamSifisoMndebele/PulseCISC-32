@@ -60,6 +60,7 @@ import {
   Activity,
   Terminal,
   CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 
 const DEFAULT_LEFT_WIDTH = 340;
@@ -217,8 +218,27 @@ export function App() {
   const [userPrograms, setUserPrograms] = useState<ProgramPreset[]>(initialData.userPrograms);
   const [selectedPresetId, setSelectedPresetId] = useState<string>(initialData.presetId);
   const [code, setCode] = useState<string>(initialData.code);
+  const [lastAssembledCode, setLastAssembledCode] = useState<string>(initialData.code);
+  const lastAssembledCodeRef = useRef<string>(initialData.code);
   const [assembled, setAssembled] = useState<AssembledProgram>(initialData.assembled);
   const [cpuState, setCpuState] = useState<CPUMicroState>(initialData.cpuSnapshot);
+
+  const hasUnassembledChanges = code !== lastAssembledCode;
+
+  // Floating Toast Notifications (Desktop & Mobile)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    if (toastTimeoutRef.current !== null) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, 2400);
+  }, []);
 
   // Active Program Metadata (Custom or Built-in)
   const currentProgram: ProgramPreset | undefined =
@@ -259,7 +279,6 @@ export function App() {
   const [isCheatsheetOpen, setIsCheatsheetOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isPsiInspectorOpen, setIsPsiInspectorOpen] = useState<boolean>(false);
-  const [assembleToast, setAssembleToast] = useState<boolean>(false);
 
   // Mobile Workspace Tab State (< 1024px)
   const [mobileTab, setMobileTab] = useState<MobileWorkspaceTab>('datapath');
@@ -414,27 +433,49 @@ export function App() {
   const activeLineIndex = assembled.addressToLine.get(currentInstAddr) ?? null;
 
   // Assemble and load program into Code Segment & Data Segment
+  const doAssembleAndLoad = useCallback(
+    (
+      codeToAssemble: string,
+      showNotification: boolean = true
+    ): { success: boolean; result: AssembledProgram } => {
+      const result = Assembler.assemble(codeToAssemble, {
+        codeStart: systemConfig.codeStart,
+        codeEnd: Math.max(0, systemConfig.dataStart - 1),
+        dataStart: systemConfig.dataStart,
+        dataEnd: systemConfig.memorySize - 1,
+      });
+      setAssembled(result);
+      lastAssembledCodeRef.current = codeToAssemble;
+      setLastAssembledCode(codeToAssemble);
+
+      if (result.errors.length === 0) {
+        cpu.reset(result.entryPoint);
+        cpu.memory.loadCode(result.codeBytes);
+        if (result.dataBytes && result.dataBytes.length > 0) {
+          cpu.memory.loadData(result.dataBytes);
+        }
+        setCpuState(cpu.getSnapshot());
+        if (showNotification) {
+          showToast('Assembled & Loaded into CPU!', 'success');
+        }
+        return { success: true, result };
+      } else {
+        if (showNotification) {
+          showToast(
+            `Assembly failed: ${result.errors.length} error${result.errors.length > 1 ? 's' : ''}`,
+            'error'
+          );
+        }
+        return { success: false, result };
+      }
+    },
+    [cpu, systemConfig, showToast]
+  );
+
   const handleAssemble = useCallback(() => {
     setIsRunning(false);
-    const result = Assembler.assemble(code, {
-      codeStart: systemConfig.codeStart,
-      codeEnd: Math.max(0, systemConfig.dataStart - 1),
-      dataStart: systemConfig.dataStart,
-      dataEnd: systemConfig.memorySize - 1,
-    });
-    setAssembled(result);
-
-    if (result.errors.length === 0) {
-      cpu.reset(result.entryPoint);
-      cpu.memory.loadCode(result.codeBytes);
-      if (result.dataBytes && result.dataBytes.length > 0) {
-        cpu.memory.loadData(result.dataBytes);
-      }
-      setCpuState(cpu.getSnapshot());
-      setAssembleToast(true);
-      setTimeout(() => setAssembleToast(false), 2200);
-    }
-  }, [code, cpu, systemConfig]);
+    doAssembleAndLoad(code, true);
+  }, [code, doAssembleAndLoad]);
 
   // Load preset or user custom program
   const handleSelectPreset = useCallback(
@@ -447,24 +488,9 @@ export function App() {
 
       setSelectedPresetId(preset.id);
       setCode(preset.code);
-      const result = Assembler.assemble(preset.code, {
-        codeStart: systemConfig.codeStart,
-        codeEnd: Math.max(0, systemConfig.dataStart - 1),
-        dataStart: systemConfig.dataStart,
-        dataEnd: systemConfig.memorySize - 1,
-      });
-      setAssembled(result);
-
-      if (result.errors.length === 0) {
-        cpu.reset(result.entryPoint);
-        cpu.memory.loadCode(result.codeBytes);
-        if (result.dataBytes && result.dataBytes.length > 0) {
-          cpu.memory.loadData(result.dataBytes);
-        }
-        setCpuState(cpu.getSnapshot());
-      }
+      doAssembleAndLoad(preset.code, false);
     },
-    [userPrograms, systemConfig, cpu]
+    [userPrograms, doAssembleAndLoad]
   );
 
   // Create and persist a new custom program locally
@@ -491,24 +517,9 @@ export function App() {
       setLeftTab('editor');
       setMobileTab('code');
 
-      const result = Assembler.assemble(newCode, {
-        codeStart: systemConfig.codeStart,
-        codeEnd: Math.max(0, systemConfig.dataStart - 1),
-        dataStart: systemConfig.dataStart,
-        dataEnd: systemConfig.memorySize - 1,
-      });
-      setAssembled(result);
-
-      if (result.errors.length === 0) {
-        cpu.reset(result.entryPoint);
-        cpu.memory.loadCode(result.codeBytes);
-        if (result.dataBytes && result.dataBytes.length > 0) {
-          cpu.memory.loadData(result.dataBytes);
-        }
-        setCpuState(cpu.getSnapshot());
-      }
+      doAssembleAndLoad(newCode, false);
     },
-    [code, userPrograms, systemConfig, cpu]
+    [code, userPrograms, doAssembleAndLoad]
   );
 
   // Quick-create a blank custom program from Navbar
@@ -541,22 +552,8 @@ export function App() {
     const fallback = remaining[0] ?? PRESETS[0];
     setSelectedPresetId(fallback.id);
     setCode(fallback.code);
-    const result = Assembler.assemble(fallback.code, {
-      codeStart: systemConfig.codeStart,
-      codeEnd: Math.max(0, systemConfig.dataStart - 1),
-      dataStart: systemConfig.dataStart,
-      dataEnd: systemConfig.memorySize - 1,
-    });
-    setAssembled(result);
-    if (result.errors.length === 0) {
-      cpu.reset(result.entryPoint);
-      cpu.memory.loadCode(result.codeBytes);
-      if (result.dataBytes && result.dataBytes.length > 0) {
-        cpu.memory.loadData(result.dataBytes);
-      }
-      setCpuState(cpu.getSnapshot());
-    }
-  }, [userPrograms, selectedPresetId, systemConfig, cpu]);
+    doAssembleAndLoad(fallback.code, false);
+  }, [userPrograms, selectedPresetId, doAssembleAndLoad]);
 
   // Revert modified built-in sample back to original code
   const handleResetSampleCode = useCallback(() => {
@@ -564,53 +561,93 @@ export function App() {
     if (!sample) return;
     setIsRunning(false);
     setCode(sample.code);
-    const result = Assembler.assemble(sample.code, {
-      codeStart: systemConfig.codeStart,
-      codeEnd: Math.max(0, systemConfig.dataStart - 1),
-      dataStart: systemConfig.dataStart,
-      dataEnd: systemConfig.memorySize - 1,
-    });
-    setAssembled(result);
-    cpu.reset(result.entryPoint);
-    cpu.memory.loadCode(result.codeBytes);
-    if (result.dataBytes && result.dataBytes.length > 0) {
-      cpu.memory.loadData(result.dataBytes);
-    }
-    setCpuState(cpu.getSnapshot());
-  }, [selectedPresetId, systemConfig, cpu]);
+    doAssembleAndLoad(sample.code, true);
+  }, [selectedPresetId, doAssembleAndLoad]);
 
   // Step 1 Micro-Operation (FSM phase)
   const handleStepMicro = useCallback(() => {
+    if (code !== lastAssembledCodeRef.current) {
+      const { success } = doAssembleAndLoad(code, true);
+      if (!success) {
+        setIsLeftOpen(true);
+        setLeftTab('editor');
+        return;
+      }
+    }
     if (cpu.halted) return;
     const nextState = cpu.stepMicro();
     setCpuState(nextState);
-  }, [cpu]);
+  }, [code, doAssembleAndLoad, cpu]);
 
   // Step 1 Full Instruction (All micro-steps)
   const handleStepInstruction = useCallback(() => {
+    if (code !== lastAssembledCodeRef.current) {
+      const { success } = doAssembleAndLoad(code, true);
+      if (!success) {
+        setIsLeftOpen(true);
+        setLeftTab('editor');
+        return;
+      }
+    }
     if (cpu.halted) return;
     const nextState = cpu.stepInstruction();
     setCpuState(nextState);
-  }, [cpu]);
+  }, [code, doAssembleAndLoad, cpu]);
 
   // Reset CPU
   const handleReset = useCallback(() => {
     setIsRunning(false);
+    if (code !== lastAssembledCodeRef.current) {
+      doAssembleAndLoad(code, true);
+      return;
+    }
     cpu.reset(assembled.entryPoint);
     cpu.memory.loadCode(assembled.codeBytes);
     if (assembled.dataBytes && assembled.dataBytes.length > 0) {
       cpu.memory.loadData(assembled.dataBytes);
     }
     setCpuState(cpu.getSnapshot());
-  }, [cpu, assembled]);
+  }, [code, doAssembleAndLoad, cpu, assembled]);
 
-  // Toggle Continuous Run
+  // Toggle Continuous Run (Auto-assembles any code modifications)
   const handleToggleRun = useCallback(() => {
+    if (isRunning) {
+      setIsRunning(false);
+      return;
+    }
+
+    // Auto-assemble when code changes were made without pressing Assemble
+    if (code !== lastAssembledCodeRef.current) {
+      const { success } = doAssembleAndLoad(code, true);
+      if (!success) {
+        setIsLeftOpen(true);
+        setLeftTab('editor');
+        return;
+      }
+      setIsRunning(true);
+      return;
+    }
+
+    if (assembled.errors.length > 0) {
+      showToast(`Cannot run: ${assembled.errors.length} assembly error(s)`, 'error');
+      setIsLeftOpen(true);
+      setLeftTab('editor');
+      return;
+    }
+
     if (cpu.halted) {
       handleReset();
     }
-    setIsRunning((prev) => !prev);
-  }, [cpu.halted, handleReset]);
+    setIsRunning(true);
+  }, [
+    isRunning,
+    code,
+    doAssembleAndLoad,
+    assembled.errors.length,
+    cpu.halted,
+    handleReset,
+    showToast,
+  ]);
 
   // Apply User System Configuration from Settings Modal
   const handleApplyConfig = (newConfig: SystemConfig) => {
@@ -630,6 +667,8 @@ export function App() {
       dataEnd: newConfig.memorySize - 1,
     });
     setAssembled(result);
+    lastAssembledCodeRef.current = code;
+    setLastAssembledCode(code);
 
     cpu.reset(result.entryPoint);
     if (result.errors.length === 0) {
@@ -812,7 +851,7 @@ export function App() {
     <ScreenSizeGuard>
       <div
         ref={appContainerRef}
-        className={`flex flex-col h-full w-full overflow-hidden bg-[#070a10] text-slate-100 ${
+        className={`relative flex flex-col h-full w-full overflow-hidden bg-[#070a10] text-slate-100 ${
           activeResizer === 'left' || activeResizer === 'right'
             ? 'cursor-col-resize select-none'
             : activeResizer === 'bottom'
@@ -823,6 +862,7 @@ export function App() {
         {/* Top Navigation Bar */}
         <Navbar
           isRunning={isRunning}
+          hasUnassembledChanges={hasUnassembledChanges}
           onToggleRun={handleToggleRun}
           onStepMicro={handleStepMicro}
           onStepInstruction={handleStepInstruction}
@@ -851,30 +891,48 @@ export function App() {
           onCycleTheme={handleCycleTheme}
         />
 
+        {/* Floating Toast Notification (Desktop & Mobile) */}
+        {toast && (
+          <div
+            className={`absolute top-14 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-mono shadow-2xl backdrop-blur-md pointer-events-auto transition-all animate-bounce ${
+              toast.type === 'error'
+                ? 'bg-rose-950/95 border border-rose-500/60 text-rose-200'
+                : 'bg-emerald-950/95 border border-emerald-500/60 text-emerald-200'
+            }`}
+          >
+            {toast.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            )}
+            <span>{toast.message}</span>
+            {mobileTab !== 'datapath' && toast.type === 'success' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setToast(null);
+                  setMobileTab('datapath');
+                }}
+                className="lg:hidden ml-1 px-2 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/50 text-emerald-100 font-semibold cursor-pointer"
+              >
+                Datapath
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              className="ml-1 text-slate-400 hover:text-slate-200 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* =====================================================================
             MOBILE & TABLET WORKSPACE (< 1024px)
             Full-height active panel + Native-style Bottom Tab Navigation Bar
         ===================================================================== */}
         <div className="flex lg:hidden flex-1 flex-col overflow-hidden min-h-0 relative">
-          {/* Assembled Confirmation Toast on Mobile */}
-          {assembleToast && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-950/95 border border-emerald-500/60 text-emerald-200 text-xs font-mono shadow-xl backdrop-blur-md">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>Assembled &amp; Loaded into CPU!</span>
-              {mobileTab !== 'datapath' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAssembleToast(false);
-                    setMobileTab('datapath');
-                  }}
-                  className="ml-1 px-2 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/50 text-emerald-100 font-semibold"
-                >
-                  View Datapath
-                </button>
-              )}
-            </div>
-          )}
 
           {/* TAB 1: DATAPATH VISUALIZER */}
           {mobileTab === 'datapath' && (
@@ -923,6 +981,7 @@ export function App() {
                     onAssemble={handleAssemble}
                     activeLineIndex={activeLineIndex}
                     errors={assembled.errors}
+                    hasUnassembledChanges={hasUnassembledChanges}
                     onShowCheatsheet={() => setIsCheatsheetOpen(true)}
                     currentProgram={currentProgram}
                     isDirtySample={isDirtySample}
@@ -1148,6 +1207,7 @@ export function App() {
                     onAssemble={handleAssemble}
                     activeLineIndex={activeLineIndex}
                     errors={assembled.errors}
+                    hasUnassembledChanges={hasUnassembledChanges}
                     onShowCheatsheet={() => setIsCheatsheetOpen(true)}
                     currentProgram={currentProgram}
                     isDirtySample={isDirtySample}

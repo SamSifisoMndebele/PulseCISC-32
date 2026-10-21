@@ -27,6 +27,7 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 
 interface NavbarProps {
   isRunning: boolean;
+  hasUnassembledChanges?: boolean;
   onToggleRun: () => void;
   onStepMicro: () => void;
   onStepInstruction: () => void;
@@ -57,6 +58,7 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({
   isRunning,
+  hasUnassembledChanges = false,
   onToggleRun,
   onStepMicro,
   onStepInstruction,
@@ -410,10 +412,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Run / Pause Toggle */}
           <button
             onClick={onToggleRun}
-            title={isRunning ? 'Pause execution (Space)' : 'Run continuously (Space)'}
+            title={
+              isRunning
+                ? 'Pause execution (Space)'
+                : hasUnassembledChanges
+                ? 'Assemble changes & run continuously (Space)'
+                : 'Run continuously (Space)'
+            }
             className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
               isRunning
                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-lg shadow-amber-500/10'
+                : hasUnassembledChanges
+                ? 'bg-emerald-500/30 text-emerald-200 border border-emerald-400/70 hover:bg-emerald-500/40 shadow-md shadow-emerald-500/20 ring-1 ring-emerald-400/40'
                 : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 active:bg-emerald-500/40'
             }`}
           >
@@ -423,6 +433,12 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Play className="w-3.5 h-3.5 fill-current shrink-0" />
             )}
             <span>{isRunning ? 'Pause' : 'Run'}</span>
+            {!isRunning && hasUnassembledChanges && (
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"
+                title="Will auto-assemble before running"
+              />
+            )}
           </button>
 
           {/* Step Micro (1 Phase) */}

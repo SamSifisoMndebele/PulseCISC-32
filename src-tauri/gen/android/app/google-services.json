@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "626009302369",
+    "project_id": "pulsecisc-32",
+    "storage_bucket": "pulsecisc-32.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:626009302369:android:02dd638e9c1b5003ced120",
+        "android_client_info": {
+          "package_name": "com.pulsecisc32.studio"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBflNL5vLvC1icvLxaH8UYedJ4GmyT3d18"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

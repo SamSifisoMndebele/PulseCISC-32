@@ -544,15 +544,16 @@ export const TraceLogView: React.FC<TraceLogViewProps> = ({
               ) : (
                 consoleOutput.map((entry) => {
                   const isSystem = entry.type === 'system';
+                  const displayText = entry.text.replace(/\r?\n$/, '') || (entry.text.includes('\n') ? '\u00A0' : '');
                   return (
                     <div
                       key={entry.id}
-                      className={`flex items-start gap-2 leading-relaxed ${
+                      className={`flex items-start gap-2 leading-relaxed whitespace-pre-wrap ${
                         isSystem ? 'text-sky-400 font-semibold italic' : 'text-emerald-300'
                       }`}
                     >
                       <span className="text-slate-600 select-none">&gt;</span>
-                      <span className="flex-1 break-all select-text">{entry.text}</span>
+                      <span className="flex-1 break-all select-text whitespace-pre-wrap">{displayText}</span>
                     </div>
                   );
                 })

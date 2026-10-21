@@ -280,14 +280,41 @@ export class CPU {
       this.mdr = d;
       this.memory.writeWord(effectiveAddr, d);
       if (effectiveAddr === 0x0ff0) {
-        this.consoleOutput.push({
-          id: this.nextConsoleId++,
-          cycle: this.cycles,
-          type: 'output',
-          text: `[MMIO 0x0FF0]: ${toInt32(d)} (${toHex32(d)})`,
-          timestamp: Date.now(),
-        });
+        this.appendConsole(`[MMIO 0x0FF0]: ${toInt32(d)} (${toHex32(d)})\n`, 'output');
       }
+    }
+  }
+
+  /**
+   * Appends text to console output, grouping consecutive stream outputs onto the same line
+   * until a newline character is encountered.
+   */
+  public appendConsole(text: string, type: 'output' | 'system' = 'output'): void {
+    if (this.consoleOutput.length === 0) {
+      this.consoleOutput.push({
+        id: this.nextConsoleId++,
+        cycle: this.cycles,
+        type,
+        text,
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
+    const last = this.consoleOutput[this.consoleOutput.length - 1];
+
+    if (type === 'output' && last.type === 'output' && !last.text.endsWith('\n')) {
+      last.text += text;
+      last.cycle = this.cycles;
+      last.timestamp = Date.now();
+    } else {
+      this.consoleOutput.push({
+        id: this.nextConsoleId++,
+        cycle: this.cycles,
+        type,
+        text,
+        timestamp: Date.now(),
+      });
     }
   }
 
@@ -1654,13 +1681,7 @@ export class CPU {
           }
 
           const text = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
-          this.consoleOutput.push({
-            id: this.nextConsoleId++,
-            cycle: this.cycles,
-            type: 'output',
-            text: fd === 2 ? `[STDERR]: ${text}` : text,
-            timestamp: Date.now(),
-          });
+          this.appendConsole(fd === 2 ? `[STDERR]: ${text}` : text, 'output');
 
           this.writeRegister(0, count);
           this.activeBuses = ['REGS_TO_LATCHES', 'REG_TO_CONSOLE'];
@@ -1674,13 +1695,7 @@ export class CPU {
 
         case 5: {
           const val = toInt32(this.readRegister(1));
-          this.consoleOutput.push({
-            id: this.nextConsoleId++,
-            cycle: this.cycles,
-            type: 'output',
-            text: `[SYSCALL]: ${val} (${toHex32(val)})`,
-            timestamp: Date.now(),
-          });
+          this.appendConsole(`[SYSCALL]: ${val} (${toHex32(val)})\n`, 'output');
           this.activeBuses = ['REGS_TO_LATCHES', 'REG_TO_CONSOLE'];
           this.addTrace('EXECUTE', `INT 0x80 -> sys_print_int(${val})`, 'Printed integer to system console');
           break;
@@ -1689,13 +1704,7 @@ export class CPU {
         case 11: {
           const charCode = this.readRegister(1) & 0xff;
           const charStr = String.fromCharCode(charCode);
-          this.consoleOutput.push({
-            id: this.nextConsoleId++,
-            cycle: this.cycles,
-            type: 'output',
-            text: charStr,
-            timestamp: Date.now(),
-          });
+          this.appendConsole(charStr, 'output');
           this.activeBuses = ['REGS_TO_LATCHES', 'REG_TO_CONSOLE'];
           this.addTrace('EXECUTE', `INT 0x80 -> sys_print_char('${charStr}')`, 'Printed character to system console');
           break;

@@ -63,13 +63,7 @@ export function executeIrvineHLE(cpu: any, trapAddr: number): boolean {
       }
 
       const text = new TextDecoder('utf-8').decode(new Uint8Array(bytes));
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'output',
-        text,
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole(text, 'output');
       break;
     }
 
@@ -77,26 +71,14 @@ export function executeIrvineHLE(cpu: any, trapAddr: number): boolean {
       // EAX has 32-bit signed integer
       const val = toInt32(cpu.readRegister(0));
       const formatted = (val >= 0 ? '+' : '') + val.toString();
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'output',
-        text: formatted,
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole(formatted, 'output');
       break;
     }
 
     case 'writedec': {
       // EAX has 32-bit unsigned integer
       const val = toUint32(cpu.readRegister(0));
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'output',
-        text: val.toString(),
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole(val.toString(), 'output');
       break;
     }
 
@@ -104,13 +86,7 @@ export function executeIrvineHLE(cpu: any, trapAddr: number): boolean {
       // EAX formatted as 8-digit hexadecimal
       const val = toUint32(cpu.readRegister(0));
       const formatted = val.toString(16).toUpperCase().padStart(8, '0') + 'h';
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'output',
-        text: formatted,
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole(formatted, 'output');
       break;
     }
 
@@ -118,13 +94,7 @@ export function executeIrvineHLE(cpu: any, trapAddr: number): boolean {
       // AL formatted as 2-digit hexadecimal
       const val = cpu.readRegister(0, false, true) & 0xff;
       const formatted = val.toString(16).toUpperCase().padStart(2, '0') + 'h';
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'output',
-        text: formatted,
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole(formatted, 'output');
       break;
     }
 
@@ -133,13 +103,7 @@ export function executeIrvineHLE(cpu: any, trapAddr: number): boolean {
       const val = toUint32(cpu.readRegister(0));
       const binaryStr = val.toString(2).padStart(32, '0');
       const formatted = (binaryStr.match(/.{4}/g)?.join(' ') ?? binaryStr) + 'b';
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'output',
-        text: formatted,
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole(formatted, 'output');
       break;
     }
 
@@ -147,24 +111,12 @@ export function executeIrvineHLE(cpu: any, trapAddr: number): boolean {
       // AL contains ASCII character code
       const charCode = cpu.readRegister(0, false, true) & 0xff;
       const charStr = String.fromCharCode(charCode);
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'output',
-        text: charStr,
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole(charStr, 'output');
       break;
     }
 
     case 'crlf': {
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'output',
-        text: '\n',
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole('\n', 'output');
       break;
     }
 
@@ -177,13 +129,7 @@ export function executeIrvineHLE(cpu: any, trapAddr: number): boolean {
       const line3 = `  EFLAGS: CF=${flg(cpu.flags.cf)}  SF=${flg(cpu.flags.sf)}  ZF=${flg(cpu.flags.zf)}  OF=${flg(cpu.flags.of)}`;
       const full = `[Irvine32 DumpRegs]\n${line1}\n${line2}\n${line3}\n`;
 
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'system',
-        text: full,
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole(full, 'system');
       break;
     }
 
@@ -206,13 +152,7 @@ export function executeIrvineHLE(cpu: any, trapAddr: number): boolean {
         lines.push(`  [0x${addr.toString(16).toUpperCase().padStart(4, '0')}]: ${hexVal}`);
       }
 
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'system',
-        text: lines.join('\n') + '\n',
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole(lines.join('\n') + '\n', 'system');
       break;
     }
 
@@ -264,13 +204,7 @@ export function executeIrvineHLE(cpu: any, trapAddr: number): boolean {
     }
 
     case 'waitmsg': {
-      cpu.consoleOutput.push({
-        id: cpu.nextConsoleId++,
-        cycle: cpu.cycles,
-        type: 'system',
-        text: 'Press [Enter] to continue...\n',
-        timestamp: Date.now(),
-      });
+      cpu.appendConsole('Press [Enter] to continue...\n', 'system');
       break;
     }
 

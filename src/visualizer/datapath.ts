@@ -1368,13 +1368,13 @@ export class DatapathRenderer {
 
     if (sourceTag && sourceTag !== 'NONE') {
       ctx.save();
-      const badgeText = isImmediate
+      const badgeText = isImmediate || sourceTag.startsWith('IMM')
         ? 'IMM'
         : sourceTag.startsWith('REG')
         ? 'REG'
-        : sourceTag.startsWith('MEM')
+        : sourceTag.startsWith('MEM') || sourceTag.startsWith('EA')
         ? 'MEM'
-        : sourceTag;
+        : sourceTag.replace(/\([^)]*\)/g, '');
       const badgeBg = isImmediate ? 'rgba(245, 158, 11, 0.2)' : 'rgba(56, 189, 248, 0.18)';
       const badgeBorder = isImmediate ? '#f59e0b' : '#0284c7';
       const badgeFg = isImmediate ? (THEME.isLight ? '#b45309' : '#fbbf24') : (THEME.isLight ? '#0369a1' : '#7dd3fc');
@@ -1389,7 +1389,8 @@ export class DatapathRenderer {
 
       ctx.fillStyle = badgeFg;
       ctx.font = 'bold 8.5px "Inter", sans-serif';
-      ctx.fillText(badgeText, box.x + box.w - 43, box.y + 15);
+      ctx.textAlign = 'center';
+      ctx.fillText(badgeText, box.x + box.w - 27, box.y + 15);
       ctx.restore();
     }
 

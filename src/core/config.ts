@@ -4,7 +4,7 @@ export interface SystemConfig {
   dataStart: number; // default 0x0800
   codeStart: number; // default 0x0000
   initialEsp: number | 'auto'; // 'auto' = (memorySize - 4) e.g. 0xFFFC for 64KB, or custom hex number
-  defaultClockSpeed: number; // default 1.0 Hz
+  defaultClockSpeed: number; // default 1 Hz (1-60 Hz range, integer)
   maxExecutionSteps: number; // safety cycle limit (default 5000, 0 = unlimited)
   enableParticleAnimations: boolean; // default true
   particleSpeed: 'slow' | 'normal' | 'fast'; // default normal
@@ -17,7 +17,7 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
   dataStart: 0x2000, // 8 KB default code segment (0x0000 - 0x1FFF)
   codeStart: 0x0000,
   initialEsp: 'auto',
-  defaultClockSpeed: 1.0,
+  defaultClockSpeed: 1,
   maxExecutionSteps: 5000,
   enableParticleAnimations: true,
   particleSpeed: 'normal',
@@ -35,10 +35,17 @@ export function loadSystemConfig(): SystemConfig {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SYSTEM_CONFIG };
     const parsed = JSON.parse(raw);
-    return {
+    const loaded: SystemConfig = {
       ...DEFAULT_SYSTEM_CONFIG,
       ...parsed,
     };
+    if (loaded.defaultClockSpeed !== undefined) {
+      loaded.defaultClockSpeed = Math.max(
+        1,
+        Math.min(60, Math.round(Number(loaded.defaultClockSpeed) || 1))
+      );
+    }
+    return loaded;
   } catch {
     return { ...DEFAULT_SYSTEM_CONFIG };
   }

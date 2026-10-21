@@ -519,7 +519,7 @@ export class CPU {
       latchASource = `EA(${dest.rawString})`;
     } else if (dest.type === 'IMM' && dest.imm !== undefined) {
       this.latchA = dest.imm;
-      latchASource = `IMM(${dest.imm})`;
+      latchASource = 'IMM';
     } else {
       this.latchA = 0;
     }
@@ -535,7 +535,7 @@ export class CPU {
       latchBSource = `REG(${src.rawString})`;
     } else if (src.type === 'IMM' && src.imm !== undefined) {
       this.latchB = src.imm;
-      latchBSource = `IMM(${src.imm})`;
+      latchBSource = 'IMM';
       this.latchBIsImmediate = true;
     } else if (src.type === 'MEM') {
       const ea = this.computeEffectiveAddress(src);

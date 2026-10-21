@@ -275,7 +275,16 @@ export function App() {
 
   // Execution Controls & Modals
   const [isRunning, setIsRunning] = useState<boolean>(false);
-  const [clockSpeed, setClockSpeed] = useState<number>(systemConfig.defaultClockSpeed);
+  const [clockSpeed, setClockSpeed] = useState<number>(() => {
+    const initial = Math.round(systemConfig.defaultClockSpeed || 1);
+    return Math.max(1, Math.min(60, initial));
+  });
+
+  const handleClockSpeedChange = useCallback((speed: number) => {
+    const rounded = Math.round(speed);
+    const clamped = Math.max(1, Math.min(60, isNaN(rounded) ? 1 : rounded));
+    setClockSpeed(clamped);
+  }, []);
   const [isCheatsheetOpen, setIsCheatsheetOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isPsiInspectorOpen, setIsPsiInspectorOpen] = useState<boolean>(false);
@@ -677,7 +686,8 @@ export function App() {
         cpu.memory.loadData(result.dataBytes);
       }
     }
-    setClockSpeed(newConfig.defaultClockSpeed);
+    const safeClockSpeed = Math.max(1, Math.min(60, Math.round(newConfig.defaultClockSpeed || 1)));
+    setClockSpeed(safeClockSpeed);
     setCpuState(cpu.getSnapshot());
   };
 
@@ -868,7 +878,7 @@ export function App() {
           onStepInstruction={handleStepInstruction}
           onReset={handleReset}
           clockSpeed={clockSpeed}
-          onClockSpeedChange={setClockSpeed}
+          onClockSpeedChange={handleClockSpeedChange}
           selectedPresetId={selectedPresetId}
           onSelectPreset={handleSelectPreset}
           userPrograms={userPrograms}

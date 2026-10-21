@@ -89,6 +89,29 @@ export const Navbar: React.FC<NavbarProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
 
+  const [isEditingClock, setIsEditingClock] = useState<boolean>(false);
+  const [clockEditStr, setClockEditStr] = useState<string>('');
+
+  const handleStartEditClock = () => {
+    setClockEditStr(Math.round(clockSpeed).toString());
+    setIsEditingClock(true);
+  };
+
+  const handleSaveClockEdit = () => {
+    let val = parseInt(clockEditStr, 10);
+    if (isNaN(val) || val < 1) {
+      val = 1;
+    } else if (val > 60) {
+      val = 60;
+    }
+    onClockSpeedChange(val);
+    setIsEditingClock(false);
+  };
+
+  const handleCancelClockEdit = () => {
+    setIsEditingClock(false);
+  };
+
   useEffect(() => {
     if (!isMobileMenuOpen) return;
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
@@ -482,17 +505,47 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-[11px] text-slate-400 hidden 2xl:inline">Clock:</span>
             <input
               type="range"
-              min="0.1"
-              max="30"
-              step="0.1"
-              value={clockSpeed}
+              min="1"
+              max="60"
+              step="1"
+              value={Math.round(clockSpeed)}
               aria-label="Clock Speed Hz"
-              onChange={(e) => onClockSpeedChange(parseFloat(e.target.value))}
+              onChange={(e) => onClockSpeedChange(parseInt(e.target.value, 10))}
               className="w-14 sm:w-16 xl:w-20 accent-sky-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg"
             />
-            <span className="text-[11px] font-mono font-semibold text-sky-400 min-w-[34px] text-right">
-              {clockSpeed.toFixed(1)}Hz
-            </span>
+            {isEditingClock ? (
+              <div className="flex items-center gap-0.5">
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  step={1}
+                  value={clockEditStr}
+                  onChange={(e) => setClockEditStr(e.target.value)}
+                  onBlur={handleSaveClockEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSaveClockEdit();
+                    if (e.key === 'Escape') handleCancelClockEdit();
+                  }}
+                  autoFocus
+                  onFocus={(e) => e.target.select()}
+                  aria-label="Clock Speed Value (Hz)"
+                  title="Enter clock speed (1 - 60 Hz), press Enter to save"
+                  className="w-9 px-1 py-0.5 text-center text-[11px] font-mono font-semibold text-sky-200 bg-slate-950 border border-sky-500 rounded outline-none focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="text-[11px] font-mono font-semibold text-sky-400 select-none">
+                  Hz
+                </span>
+              </div>
+            ) : (
+              <span
+                onClick={handleStartEditClock}
+                title="Click to edit clock speed (1 - 60 Hz)"
+                className="text-[11px] font-mono font-semibold text-sky-400 hover:text-sky-300 hover:underline min-w-[34px] text-right cursor-pointer select-none transition-colors"
+              >
+                {Math.round(clockSpeed)}Hz
+              </span>
+            )}
           </div>
 
           {/* Desktop 3-Column IDE Dock Toggles (Shown on >= lg) */}

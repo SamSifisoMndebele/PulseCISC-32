@@ -395,31 +395,65 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="space-y-4">
               <div>
                 <label className="text-xs font-bold text-emerald-400 uppercase tracking-wider block mb-1">
-                  Default Clock Speed: {draft.defaultClockSpeed.toFixed(1)} Hz
+                  Default Clock Speed: {Math.round(draft.defaultClockSpeed)} Hz
                 </label>
                 <div className="flex items-center gap-3">
                   <input
                     type="range"
-                    min="0.1"
-                    max="30"
-                    step="0.1"
-                    value={draft.defaultClockSpeed}
+                    min="1"
+                    max="60"
+                    step="1"
+                    value={Math.round(draft.defaultClockSpeed)}
                     onChange={(e) =>
                       setDraft((prev) => ({
                         ...prev,
-                        defaultClockSpeed: parseFloat(e.target.value),
+                        defaultClockSpeed: Math.max(
+                          1,
+                          Math.min(60, parseInt(e.target.value, 10) || 1)
+                        ),
                       }))
                     }
                     className="flex-1 accent-emerald-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
                   />
-                  <div className="flex gap-1">
-                    {[0.5, 1.0, 2.0, 5.0, 10.0].map((hz) => (
+                  <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-0.5">
+                      <input
+                        type="number"
+                        min={1}
+                        max={60}
+                        step={1}
+                        value={Math.round(draft.defaultClockSpeed)}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val)) {
+                            setDraft((prev) => ({
+                              ...prev,
+                              defaultClockSpeed: Math.max(1, Math.min(60, val)),
+                            }));
+                          }
+                        }}
+                        onBlur={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          const clamped = isNaN(val) ? 1 : Math.max(1, Math.min(60, val));
+                          setDraft((prev) => ({
+                            ...prev,
+                            defaultClockSpeed: clamped,
+                          }));
+                        }}
+                        onFocus={(e) => e.target.select()}
+                        className="w-10 px-1 py-0.5 text-center text-xs font-mono font-semibold text-emerald-400 bg-slate-900 border border-slate-700 rounded outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <span className="text-xs font-mono font-semibold text-emerald-400 select-none">
+                        Hz
+                      </span>
+                    </div>
+                    {[1, 5, 10, 30, 60].map((hz) => (
                       <button
                         key={hz}
                         type="button"
                         onClick={() => setDraft((prev) => ({ ...prev, defaultClockSpeed: hz }))}
                         className={`px-1.5 py-0.5 rounded text-[10px] border ${
-                          draft.defaultClockSpeed === hz
+                          Math.round(draft.defaultClockSpeed) === hz
                             ? 'bg-emerald-950 border-emerald-500 text-emerald-300'
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                         }`}

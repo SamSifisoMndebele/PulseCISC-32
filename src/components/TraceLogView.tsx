@@ -387,7 +387,7 @@ export const TraceLogView: React.FC<TraceLogViewProps> = ({
                         {/* Provenance Badge (if immediate operand) */}
                         {hasImmProvenance && (
                           <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.2 rounded text-[8.5px] font-bold">
-                            IMM({record.latchBProvenance?.value})
+                            IMM
                           </span>
                         )}
 
